@@ -6,6 +6,7 @@
 #include <glaze/json/prettify.hpp>
 
 #include <cmath>
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -1048,6 +1049,42 @@ void save(const Document& doc, const std::string& path) {
  * @param toHex 置換後の色（hex）
  * @return 置換された色の個数
  */
+/**
+ * @brief 名前でレイヤを削除する（トップレベルおよびアセット内のプリコンポジション）
+ * @param doc 対象の Document（破壊的に変更）
+ * @param name 削除するレイヤ名
+ * @return 該当レイヤが 1 つ以上見つかり削除された場合は true、なければ false
+ */
+bool removeLayer(Document& doc, std::string_view name) {
+  bool removed = false;
+  // トップレベルのレイヤ群から名前一致を削除する
+  const auto before = doc.layers.size();
+  doc.layers.erase(
+      std::remove_if(doc.layers.begin(), doc.layers.end(),
+                     [name](const Layer& l) { return l.nm && *l.nm == name; }),
+      doc.layers.end());
+  if (doc.layers.size() != before) {
+    removed = true;
+  }
+  // アセット内のプリコンポジションのレイヤも削除する
+  if (doc.assets) {
+    for (auto& a : *doc.assets) {
+      if (!a.layers) {
+        continue;
+      }
+      const auto ab = a.layers->size();
+      a.layers->erase(
+          std::remove_if(a.layers->begin(), a.layers->end(),
+                         [name](const Layer& l) { return l.nm && *l.nm == name; }),
+          a.layers->end());
+      if (a.layers->size() != ab) {
+        removed = true;
+      }
+    }
+  }
+  return removed;
+}
+
 std::size_t recolor(Document& doc, std::string_view fromHex, std::string_view toHex) {
   const auto to = parseHexColor(toHex);
   if (!to) {

@@ -13,6 +13,7 @@
 - **バリエーション生成（`generateVariations`）** — 1 つの元データから色・テキスト・速度の異なる複数バリエーションを生成。
 - **新規シェイプレイヤの追加（`--add-shape`）** — 長方形/楕円のシェイプレイヤを指定位置・サイズ・色・表示時間で新規挿入。
 - **エフェクトの追加（`--add-effect`）** — 指定レイヤへガウシアンブラー等のエフェクトを追加。
+- **レイヤの削除（`--remove-layer`）** — 指定名のレイヤをトップレベルおよびプリコンポジションから削除。
 
 ## 依存関係
 
@@ -63,7 +64,8 @@ lottieproc <input> -o <output> [--recolor <hex>] [--from <hex>] [--text <layer> 
 | `--speed <factor>` | タイムラインをスケール（`>1` で遅くなる） |
 | `--variations <n>` | N 個のバリエーションを `<stem>_1<ext>` … として出力 |
 | `--add-shape <type> <x> <y> <w> <h> <color> <from> <to> [name]` | シェイプレイヤ（rect/ellipse）を追加。中心 `(x,y)`、サイズ `(w,h)`、色 `color`、`[from,to]` フレーム表示 |
-| `--add-effect <layer> <type> <value>` | 指定レイヤへエフェクトを追加（例: `blur <半径>`） |
+  | `--add-effect <layer> <type> <value>` | 指定レイヤへエフェクトを追加（例: `blur <半径>`） |
+  | `--remove-layer <name>` | 指定名のレイヤを削除（トップレベルおよびプリコンポジション） |
 
 ### 使用例
 
@@ -126,6 +128,7 @@ int main() {
 | `makeTrimPath(start, end[, offset, simultaneous])` | トリムパス修飾（json）を生成 |
 | `makeShapeLayer(params)` / `addLayer(doc, layer)` | シェイプレイヤを生成して Document へ追加 |
 | `findLayer(doc, name)` / `addEffect(layer, effect)` | レイヤ検索 / レイヤへエフェクト追加 |
+| `removeLayer(doc, name)` | 指定名のレイヤを削除（戻り値は削除成否） |
 | `makeGaussianBlur(stddev[, repeatEdge])` | ガウシアンブラーエフェクト（json）を生成 |
 
 ## ライセンス

@@ -163,6 +163,32 @@ TEST_CASE("addEffect appends to ef") {
   REQUIRE(l2->extra["ef"][0]["ef"][1]["v"]["k"].as<double>() == Catch::Approx(12.0));
 }
 
+TEST_CASE("removeLayer removes by name") {
+  auto doc = lottie_edit::parse(R"({
+    "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
+    "layers": [
+      {"ty": 4, "nm": "Keep", "ip": 0, "op": 60, "st": 0, "shapes": []},
+      {"ty": 4, "nm": "Drop", "ip": 0, "op": 60, "st": 0, "shapes": []}
+    ],
+    "assets": [{
+      "id": "pre",
+      "layers": [{"ty": 4, "nm": "Drop", "ip": 0, "op": 60, "st": 0, "shapes": []}]
+    }]
+  })");
+
+  REQUIRE(lottie_edit::removeLayer(doc, "Drop"));
+  REQUIRE(doc.layers.size() == 1);
+  REQUIRE((doc.layers[0].nm && *doc.layers[0].nm == "Keep"));
+  REQUIRE((doc.assets && doc.assets->size() == 1));
+  REQUIRE(doc.assets->at(0).layers);
+  REQUIRE(doc.assets->at(0).layers->empty());
+
+  // ラウンドトリップ後も削除が維持される
+  auto again = lottie_edit::parse(lottie_edit::dump(doc));
+  REQUIRE(again.layers.size() == 1);
+  REQUIRE_FALSE(lottie_edit::removeLayer(again, "Missing"));
+}
+
 TEST_CASE("makeTrimPath builds tm") {
   auto tm = lottie_edit::makeTrimPath(25, 75, 0, true);
   REQUIRE(tm["ty"].as<std::string>() == "tm");

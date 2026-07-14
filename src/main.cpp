@@ -22,7 +22,8 @@ void usage(const char* argv0) {
       << " <input> -o <output> [--recolor <hex>] [--from <hex>] [--text <layer> <str>]\n"
       << "                            [--speed <factor>] [--variations <n>]\n"
       << "                            [--add-shape <type> <x> <y> <w> <h> <color> <from> <to> [name]]\n"
-      << "                            [--add-effect <layer> <type> <value>]\n"
+       << "                            [--add-effect <layer> <type> <value>]\n"
+       << "                            [--remove-layer <name>]\n"
       << "\n"
       << "  input/output : .json or .lottie\n"
       << "  --recolor    : replace colors with this hex (#rrggbb). With --from, only matching colors.\n"
@@ -32,7 +33,8 @@ void usage(const char* argv0) {
       << "  --variations : emit N variants as <stem>_1<ext> .. <stem>_N<ext>\n"
       << "  --add-shape  : add a shape layer (type: rect|ellipse) at (x,y) size (w,h),\n"
       << "                 filled with hex color, visible [from,to] frames (optional name)\n"
-      << "  --add-effect : add an effect to named layer (type: blur <radius>)\n";
+       << "  --add-effect : add an effect to named layer (type: blur <radius>)\n"
+       << "  --remove-layer: remove the named layer (top-level and precomps)\n";
 }
 
 /**
@@ -131,6 +133,7 @@ int main(int argc, char** argv) {
   int         variations = 0;     // 生成するバリエーション数（0=なし）
   std::vector<PendingShape>  pendingShapes;   // 追加するシェイプレイヤ群
   std::vector<PendingEffect> pendingEffects;  // 追加するエフェクト群
+  std::vector<std::string>   removeLayers;    // 削除するレイヤ名群
 
   try {
     // 引数を先頭から順に解析する
@@ -195,6 +198,10 @@ int main(int argc, char** argv) {
         e.type  = argv[++i];
         e.value = std::stod(argv[++i]);
         pendingEffects.push_back(std::move(e));
+      } else if (arg == "--remove-layer") {
+        // --remove-layer <name>
+        need(1);
+        removeLayers.emplace_back(argv[++i]);
       } else if (!arg.empty() && arg[0] == '-') {
         // 未知のオプション
         std::cerr << "unknown option: " << arg << "\n";
@@ -297,6 +304,11 @@ int main(int argc, char** argv) {
     if (base.speed) {
       const auto n = lottie_edit::setSpeed(doc, *base.speed);
       std::cout << "setSpeed: " << n << " fields\n";
+    }
+    // 指定されたレイヤの削除（名前一致）
+    for (auto& name : removeLayers) {
+      const bool ok = lottie_edit::removeLayer(doc, name);
+      std::cout << "removeLayer " << name << ": " << (ok ? "ok" : "not found") << "\n";
     }
 
     // ラウンドトリップ検証

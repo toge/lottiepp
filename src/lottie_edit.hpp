@@ -325,6 +325,14 @@ Document makeDocument(const DocumentParams& p = {});
 Layer* findLayer(Document& doc, std::string_view name);
 
 /**
+ * @brief 名前でレイヤを削除する（トップレベルおよびアセット内）
+ * @param doc 対象の Document（破壊的に変更）
+ * @param name 削除するレイヤ名
+ * @return 該当レイヤが 1 つ以上見つかり削除された場合は true、なければ false
+ */
+bool removeLayer(Document& doc, std::string_view name);
+
+/**
  * @brief ガウシアンブラー（AE 互換）エフェクトノードを生成する
  * @param stddev ブラー半径
  * @param repeatEdge エッジピクセルを繰り返すか（デフォルト true）
