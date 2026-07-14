@@ -44,7 +44,7 @@ TEST_CASE("replaceText") {
 
   REQUIRE(lottie_edit::replaceText(doc, "Title", "World"));
   REQUIRE(doc.layers[0].t);
-  REQUIRE((*doc.layers[0].t)["d"]["k"][0]["s"]["t"].as<std::string>() == "World");
+  REQUIRE((*doc.layers[0].t->d->k)[0]["s"]["t"].as<std::string>() == "World");
   REQUIRE_FALSE(lottie_edit::replaceText(doc, "Missing", "X"));
 }
 
@@ -62,7 +62,7 @@ TEST_CASE("setSpeed scales timing") {
   REQUIRE(doc.op.value() == Catch::Approx(120.0));
   REQUIRE(doc.layers[0].op.value() == Catch::Approx(120.0));
   REQUIRE(doc.layers[0].st.value() == Catch::Approx(20.0));
-  REQUIRE((*doc.layers[0].ks)["o"]["k"][1]["t"].as<double>() == Catch::Approx(120.0));
+  REQUIRE((*doc.layers[0].ks->o)["k"][1]["t"].as<double>() == Catch::Approx(120.0));
 }
 
 TEST_CASE("unknown fields preserved") {
@@ -127,9 +127,9 @@ TEST_CASE("addShapeLayer builds a valid layer") {
 
   const auto& layer = doc.layers[0];
   REQUIRE(layer.ty == 4);
-  REQUIRE(layer.nm && *layer.nm == "Box");
+  REQUIRE((layer.nm && *layer.nm == "Box"));
   REQUIRE(layer.extra.contains("ind"));
-  REQUIRE(layer.extra["ind"].as<int>() == 1);
+  REQUIRE(layer.extra.at("ind").as<int>() == 1);
 
   // ラウンドトリップ後にシェイプが保持されること
   auto again = lottie_edit::parse(lottie_edit::dump(doc));
@@ -140,7 +140,7 @@ TEST_CASE("addShapeLayer builds a valid layer") {
   REQUIRE(shapes[0]["it"][1]["ty"].as<std::string>() == "fl");
   REQUIRE(shapes[0]["it"][1]["c"]["k"][1].as<float>() == Catch::Approx(1.0f));
   // レイヤ位置の反映
-  REQUIRE((*again.layers[0].ks)["p"]["k"][0].as<double>() == Catch::Approx(50.0));
+  REQUIRE((*again.layers[0].ks->p)["k"][0].as<double>() == Catch::Approx(50.0));
 }
 
 TEST_CASE("addEffect appends to ef") {
@@ -174,7 +174,7 @@ TEST_CASE("makeTrimPath builds tm") {
 TEST_CASE("makeDocument creates empty valid doc") {
   auto doc = lottie_edit::makeDocument();
   REQUIRE(doc.layers.empty());
-  REQUIRE(doc.v && *doc.v == "5.7.4");
+  REQUIRE((doc.v && *doc.v == "5.7.4"));
   REQUIRE(doc.fr.value() == Catch::Approx(60.0));
   REQUIRE(doc.ip.value() == Catch::Approx(0.0));
   REQUIRE(doc.op.value() == Catch::Approx(60.0));
@@ -196,7 +196,7 @@ TEST_CASE("makeDocument respects params") {
   p.h    = 1080;
   p.op   = 90.0;
   auto doc = lottie_edit::makeDocument(p);
-  REQUIRE(doc.nm && *doc.nm == "New");
+  REQUIRE((doc.nm && *doc.nm == "New"));
   REQUIRE(doc.fr.value() == Catch::Approx(30.0));
   REQUIRE(doc.w.value() == 1920);
   REQUIRE(doc.h.value() == 1080);
