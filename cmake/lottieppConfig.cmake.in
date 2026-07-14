@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(glaze CONFIG)
+find_dependency(miniz CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/lottieppTargets.cmake")
+
+check_required_components(lottiepp)
