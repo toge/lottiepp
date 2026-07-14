@@ -170,3 +170,35 @@ TEST_CASE("makeTrimPath builds tm") {
   REQUIRE(tm["s"]["k"].as<double>() == Catch::Approx(25.0));
   REQUIRE(tm["e"]["k"].as<double>() == Catch::Approx(75.0));
 }
+
+TEST_CASE("makeDocument creates empty valid doc") {
+  auto doc = lottie_edit::makeDocument();
+  REQUIRE(doc.layers.empty());
+  REQUIRE(doc.v && *doc.v == "5.7.4");
+  REQUIRE(doc.fr.value() == Catch::Approx(60.0));
+  REQUIRE(doc.ip.value() == Catch::Approx(0.0));
+  REQUIRE(doc.op.value() == Catch::Approx(60.0));
+  REQUIRE(doc.w.value() == 512);
+  REQUIRE(doc.h.value() == 512);
+  REQUIRE_FALSE(doc.nm);
+
+  // ラウンドトリップで妥当な空ドキュメントとして保存・再解析できる
+  auto again = lottie_edit::parse(lottie_edit::dump(doc));
+  REQUIRE(again.layers.empty());
+  REQUIRE(again.w.value() == 512);
+}
+
+TEST_CASE("makeDocument respects params") {
+  lottie_edit::DocumentParams p;
+  p.name = "New";
+  p.fr   = 30.0;
+  p.w    = 1920;
+  p.h    = 1080;
+  p.op   = 90.0;
+  auto doc = lottie_edit::makeDocument(p);
+  REQUIRE(doc.nm && *doc.nm == "New");
+  REQUIRE(doc.fr.value() == Catch::Approx(30.0));
+  REQUIRE(doc.w.value() == 1920);
+  REQUIRE(doc.h.value() == 1080);
+  REQUIRE(doc.op.value() == Catch::Approx(90.0));
+}

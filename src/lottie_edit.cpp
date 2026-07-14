@@ -785,6 +785,28 @@ void addLayer(Document& doc, Layer layer) {
 }
 
 /**
+ * @brief 新規 Lottie ドキュメント（空）を生成する
+ * @details レイヤ空配列と既定のメタデータを持つ妥当なドキュメントを返す。
+ *          生成後は makeShapeLayer 等で要素を追加し、save で出力できる。
+ * @param p ドキュメントパラメータ
+ * @return 生成された空の Document
+ */
+Document makeDocument(const DocumentParams& p) {
+  Document doc;
+  doc.v  = p.version;                    // フォーマットバージョン
+  doc.fr = p.fr;                         // フレームレート
+  doc.ip = p.ip;                         // イン点
+  doc.op = p.op;                         // アウト点
+  doc.w  = p.w;                          // 幅
+  doc.h  = p.h;                          // 高さ
+  if (!p.name.empty()) {
+    doc.nm = p.name;                     // 名前（指定時のみ）
+  }
+  // レイヤは空で初期化される（Document::layers の既定値）
+  return doc;
+}
+
+/**
  * @brief 名前でレイヤを検索する（トップレベルおよびアセット内のプリコンポジション）
  * @param doc 対象の Document
  * @param name 検索するレイヤ名

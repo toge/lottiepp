@@ -295,6 +295,28 @@ Layer makeShapeLayer(const ShapeLayerParams& p);
 void addLayer(Document& doc, Layer layer);
 
 /**
+ * @brief 新規 Lottie ドキュメント生成時のパラメータ
+ * @details すべてのメンバが既定値を持ち、指定しなかった項目は既定の空ドキュメントとなる。
+ */
+struct DocumentParams {
+  std::string version = "5.7.4";  // フォーマットバージョン（Lottie 互換）
+  std::string name    = "";       // ドキュメント名（空の場合は設定しない）
+  double      fr      = 60.0;     // フレームレート
+  double      ip      = 0.0;      // 全体のイン点
+  double      op      = 60.0;     // 全体のアウト点（既定 1 秒分）
+  int         w       = 512;      // 幅
+  int         h       = 512;      // 高さ
+};
+
+/**
+ * @brief 空の Lottie ドキュメントを生成する
+ * @details レイヤが空の妥当なドキュメントを作成する。makeShapeLayer + addLayer で要素を追加し、save で出力できる。
+ * @param p ドキュメントパラメータ（既定値では 512x512 / 60fps / 60 フレーム）
+ * @return 生成された空の Document
+ */
+Document makeDocument(const DocumentParams& p = {});
+
+/**
  * @brief 名前でレイヤを検索する（トップレベルおよびアセット内）
  * @param doc 対象の Document
  * @param name 検索するレイヤ名
