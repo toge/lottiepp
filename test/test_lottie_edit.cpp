@@ -107,3 +107,66 @@ TEST_CASE("generateVariations") {
   REQUIRE((*outs[0].layers[0].shapes)[0]["c"]["k"][0].as<float>() == Catch::Approx(1.0f));
   REQUIRE(outs[1].op.value() == Catch::Approx(60.0));
 }
+
+TEST_CASE("addShapeLayer builds a valid layer") {
+  auto doc = lottie_edit::parse(R"({
+    "fr": 60, "ip": 0, "op": 60, "w": 200, "h": 200, "layers": []
+  })");
+
+  lottie_edit::ShapeLayerParams p;
+  p.name = "Box";
+  p.x    = 50;
+  p.y    = 40;
+  p.from = 0;
+  p.to   = 60;
+  p.items.push_back(lottie_edit::makeRect(80, 40));
+  p.items.push_back(lottie_edit::makeFill("#00ff00"));
+
+  lottie_edit::addLayer(doc, lottie_edit::makeShapeLayer(p));
+  REQUIRE(doc.layers.size() == 1);
+
+  const auto& layer = doc.layers[0];
+  REQUIRE(layer.ty == 4);
+  REQUIRE(layer.nm && *layer.nm == "Box");
+  REQUIRE(layer.extra.contains("ind"));
+  REQUIRE(layer.extra["ind"].as<int>() == 1);
+
+  // ラウンドトリップ後にシェイプが保持されること
+  auto again = lottie_edit::parse(lottie_edit::dump(doc));
+  REQUIRE(again.layers.size() == 1);
+  const auto& shapes = *again.layers[0].shapes;
+  REQUIRE(shapes[0]["ty"].as<std::string>() == "gr");
+  REQUIRE(shapes[0]["it"][0]["ty"].as<std::string>() == "rc");
+  REQUIRE(shapes[0]["it"][1]["ty"].as<std::string>() == "fl");
+  REQUIRE(shapes[0]["it"][1]["c"]["k"][1].as<float>() == Catch::Approx(1.0f));
+  // レイヤ位置の反映
+  REQUIRE((*again.layers[0].ks)["p"]["k"][0].as<double>() == Catch::Approx(50.0));
+}
+
+TEST_CASE("addEffect appends to ef") {
+  auto doc = lottie_edit::parse(R"({
+    "fr": 60, "ip": 0, "op": 60, "w": 200, "h": 200,
+    "layers": [{"ty": 4, "nm": "Target", "ip": 0, "op": 60, "st": 0, "ind": 1, "shapes": []}]
+  })");
+
+  auto* layer = lottie_edit::findLayer(doc, "Target");
+  REQUIRE(layer != nullptr);
+  lottie_edit::addEffect(*layer, lottie_edit::makeGaussianBlur(12.0));
+
+  auto again = lottie_edit::parse(lottie_edit::dump(doc));
+  auto* l2   = lottie_edit::findLayer(again, "Target");
+  REQUIRE(l2 != nullptr);
+  REQUIRE(l2->extra.contains("ef"));
+  REQUIRE(l2->extra["ef"].is_array());
+  REQUIRE(l2->extra["ef"].get_array().size() == 1);
+  REQUIRE(l2->extra["ef"][0]["nm"].as<std::string>() == "Gaussian Blur");
+  REQUIRE(l2->extra["ef"][0]["ef"][1]["v"]["k"].as<double>() == Catch::Approx(12.0));
+}
+
+TEST_CASE("makeTrimPath builds tm") {
+  auto tm = lottie_edit::makeTrimPath(25, 75, 0, true);
+  REQUIRE(tm["ty"].as<std::string>() == "tm");
+  REQUIRE(tm["m"].as<int>() == 1);
+  REQUIRE(tm["s"]["k"].as<double>() == Catch::Approx(25.0));
+  REQUIRE(tm["e"]["k"].as<double>() == Catch::Approx(75.0));
+}

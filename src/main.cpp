@@ -21,13 +21,18 @@ void usage(const char* argv0) {
       << "Usage: " << argv0
       << " <input> -o <output> [--recolor <hex>] [--from <hex>] [--text <layer> <str>]\n"
       << "                            [--speed <factor>] [--variations <n>]\n"
+      << "                            [--add-shape <type> <x> <y> <w> <h> <color> <from> <to> [name]]\n"
+      << "                            [--add-effect <layer> <type> <value>]\n"
       << "\n"
       << "  input/output : .json or .lottie\n"
       << "  --recolor    : replace colors with this hex (#rrggbb). With --from, only matching colors.\n"
       << "  --from       : source color filter for --recolor\n"
       << "  --text       : replace text on named text layer (ty=5)\n"
       << "  --speed      : scale timeline ( >1 slower / longer )\n"
-      << "  --variations : emit N variants as <stem>_1<ext> .. <stem>_N<ext>\n";
+      << "  --variations : emit N variants as <stem>_1<ext> .. <stem>_N<ext>\n"
+      << "  --add-shape  : add a shape layer (type: rect|ellipse) at (x,y) size (w,h),\n"
+      << "                 filled with hex color, visible [from,to] frames (optional name)\n"
+      << "  --add-effect : add an effect to named layer (type: blur <radius>)\n";
 }
 
 /**
@@ -85,6 +90,21 @@ std::vector<lottie_edit::VariationParams> makeDefaultVariations(int n, const lot
   return sets;
 }
 
+// 保留中の新規追加要求（ロード後にまとめて適用する）
+struct PendingShape {
+  std::string type;   // シェイプ種別（"rect" / "ellipse"）
+  std::string name;   // レイヤ名（空なら type を使用）
+  double     x = 0, y = 0;  // レイヤ位置（中心座標、単位はピクセル）
+  double     w = 0, h = 0;  // シェイプの幅・高さ（単位はピクセル）
+  double     from = 0, to = 0;  // 表示フレーム範囲 [from, to]
+  std::string color;  // 塗りつぶし色（#rrggbb 等）
+};
+struct PendingEffect {
+  std::string layer;  // 対象レイヤ名
+  std::string type;   // エフェクト種別（"blur" 等）
+  double     value = 0;  // エフェクトのパラメータ値（例: ブラー半径）
+};
+
 }  // namespace
 
 /**
@@ -109,6 +129,8 @@ int main(int argc, char** argv) {
   double      speed      = 0.0;  // 速度倍率の一時保持用
   bool        hasSpeed   = false; // --speed が指定されたかどうか
   int         variations = 0;     // 生成するバリエーション数（0=なし）
+  std::vector<PendingShape>  pendingShapes;   // 追加するシェイプレイヤ群
+  std::vector<PendingEffect> pendingEffects;  // 追加するエフェクト群
 
   try {
     // 引数を先頭から順に解析する
@@ -147,6 +169,32 @@ int main(int argc, char** argv) {
         if (variations < 1) {
           throw std::runtime_error("--variations must be >= 1");
         }
+      } else if (arg == "--add-shape") {
+        // --add-shape <type> <x> <y> <w> <h> <color> <from> <to> [name]
+        // 必須 8 引数を順に読み取り、続く引数がオプション（'-' 始まり）でなければ名前とする
+        need(8);
+        PendingShape s;
+        s.type  = argv[++i];
+        s.x     = std::stod(argv[++i]);
+        s.y     = std::stod(argv[++i]);
+        s.w     = std::stod(argv[++i]);
+        s.h     = std::stod(argv[++i]);
+        s.color = argv[++i];
+        s.from  = std::stod(argv[++i]);
+        s.to    = std::stod(argv[++i]);
+        // 名前は省略可能：次引数がオプションでなければ採用する
+        if (i + 1 < argc && argv[i + 1][0] != '-') {
+          s.name = argv[++i];
+        }
+        pendingShapes.push_back(std::move(s));
+      } else if (arg == "--add-effect") {
+        // --add-effect <layer> <type> <value>
+        need(3);
+        PendingEffect e;
+        e.layer = argv[++i];
+        e.type  = argv[++i];
+        e.value = std::stod(argv[++i]);
+        pendingEffects.push_back(std::move(e));
       } else if (!arg.empty() && arg[0] == '-') {
         // 未知のオプション
         std::cerr << "unknown option: " << arg << "\n";
@@ -170,6 +218,42 @@ int main(int argc, char** argv) {
 
     // 入力ファイルを読み込み Document を構築
     auto doc = lottie_edit::load(input);
+
+    // 新規シェイプレイヤの追加（エフェクトより先に適用して名前解決する）
+    for (auto& s : pendingShapes) {
+      lottie_edit::ShapeLayerParams p;
+      // 名前が未指定の場合はシェイプ種別をそのままレイヤ名とする
+      p.name  = s.name.empty() ? s.type : s.name;
+      p.x     = s.x;
+      p.y     = s.y;
+      p.from  = s.from;
+      p.to    = s.to;
+      // 種別に応じたシェイプを生成し、塗りつぶしを追加する
+      if (s.type == "rect") {
+        p.items.push_back(lottie_edit::makeRect(s.w, s.h));
+      } else if (s.type == "ellipse") {
+        p.items.push_back(lottie_edit::makeEllipse(s.w, s.h));
+      } else {
+        throw std::runtime_error("unknown shape type: " + s.type);
+      }
+      p.items.push_back(lottie_edit::makeFill(s.color));
+      lottie_edit::addLayer(doc, lottie_edit::makeShapeLayer(p));
+      std::cout << "add-shape: " << p.name << "\n";
+    }
+
+    // レイヤへのエフェクト追加（名前で対象レイヤを解決する）
+    for (auto& e : pendingEffects) {
+      auto* layer = lottie_edit::findLayer(doc, e.layer);
+      if (!layer) {
+        throw std::runtime_error("layer not found for effect: " + e.layer);
+      }
+      if (e.type == "blur") {
+        lottie_edit::addEffect(*layer, lottie_edit::makeGaussianBlur(e.value));
+      } else {
+        throw std::runtime_error("unknown effect type: " + e.type);
+      }
+      std::cout << "add-effect: " << e.type << " -> " << e.layer << "\n";
+    }
 
     // コマンドライン引数からベースパラメータを組み立てる
     lottie_edit::VariationParams base;

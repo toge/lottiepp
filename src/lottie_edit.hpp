@@ -206,6 +206,118 @@ struct Manifest {
   std::vector<AnimationEntry> animations{};             // アニメーションエントリ群
 };
 
+// --- 新規要素・エフェクト追加用ヘルパ ---
+
+/**
+ * @brief 静的プロパティ値（アニメーションなし）を表す json ノードを生成する
+ * @param v 静的に設定する数値
+ * @return {"a":0,"k":<v>} の形の json ノード
+ */
+json staticProp(double v);
+
+/**
+ * @brief 静的プロパティ値（配列）を表す json ノードを生成する
+ * @param arr JSON 配列リテラル文字列（例: "[100,100]"）
+ * @return {"a":0,"k":<arr>} の形の json ノード
+ */
+json staticProp(std::string_view arr);
+
+/**
+ * @brief 長方形シェイプ（ty="rc"）を生成する
+ * @param w 幅（レイヤ原点を中心とする）
+ * @param h 高さ（レイヤ原点を中心とする）
+ * @param round 角丸め半径（デフォルト 0）
+ * @return シェイプアイテムを表す json ノード
+ */
+json makeRect(double w, double h, double round = 0.0);
+
+/**
+ * @brief 楕円シェイプ（ty="el"）を生成する
+ * @param w 幅（レイヤ原点を中心とする）
+ * @param h 高さ（レイヤ原点を中心とする）
+ * @return シェイプアイテムを表す json ノード
+ */
+json makeEllipse(double w, double h);
+
+/**
+ * @brief 単色塗りつぶし（ty="fl"）を生成する
+ * @param hex 色（#rrggbb 等）
+ * @param opacity 不透明度（0～100）
+ * @return シェイプアイテムを表す json ノード
+ */
+json makeFill(std::string_view hex, double opacity = 100.0);
+
+/**
+ * @brief 単色ストローク（ty="st"）を生成する
+ * @param hex 色（#rrggbb 等）
+ * @param width 線幅
+ * @param opacity 不透明度（0～100）
+ * @return シェイプアイテムを表す json ノード
+ */
+json makeStroke(std::string_view hex, double width, double opacity = 100.0);
+
+/**
+ * @brief トリムパス修飾（ty="tm"）を生成する
+ * @param startPct 開始位置（0～100、パーセント）
+ * @param endPct 終了位置（0～100、パーセント）
+ * @param offsetDeg オフセット（度）
+ * @param simultaneous true=全パスを同時にトリム, false=各パスを個別にトリム
+ * @return シェイプ修飾アイテムを表す json ノード
+ */
+json makeTrimPath(double startPct, double endPct, double offsetDeg = 0.0, bool simultaneous = true);
+
+/**
+ * @brief シェイプレイヤ生成時のパラメータ
+ */
+struct ShapeLayerParams {
+  std::string            name    = "Shape";  // レイヤ名
+  std::vector<json>      items;              // シェイプ + 塗り/線（makeRect 等で構築）
+  double                 x      = 0.0;        // レイヤ位置 X（中心点）
+  double                 y      = 0.0;        // レイヤ位置 Y（中心点）
+  double                 from   = 0.0;       // イン点（フレーム）
+  double                 to     = 0.0;       // アウト点（フレーム）
+  double                 opacity = 100.0;    // レイヤ不透明度（0～100）
+};
+
+/**
+ * @brief シェイプレイヤ（ty=4）を生成する
+ * @param p レイヤパラメータ（items にシェイプと塗り/線を含める）
+ * @return 生成された Layer（ind は未設定。addLayer で付与される）
+ */
+Layer makeShapeLayer(const ShapeLayerParams& p);
+
+/**
+ * @brief Document のトップレベルへレイヤを追加する
+ * @details 既存レイヤの最大 ind に +1 した値を ind として付与する。
+ * @param doc 対象の Document（破壊的に変更）
+ * @param layer 追加するレイヤ
+ */
+void addLayer(Document& doc, Layer layer);
+
+/**
+ * @brief 名前でレイヤを検索する（トップレベルおよびアセット内）
+ * @param doc 対象の Document
+ * @param name 検索するレイヤ名
+ * @return 見つかった場合は Layer へのポインタ、なければ nullptr
+ */
+Layer* findLayer(Document& doc, std::string_view name);
+
+/**
+ * @brief ガウシアンブラー（AE 互換）エフェクトノードを生成する
+ * @param stddev ブラー半径
+ * @param repeatEdge エッジピクセルを繰り返すか（デフォルト true）
+ * @return レイヤエフェクト（ef）に追加可能な json ノード
+ */
+json makeGaussianBlur(double stddev, bool repeatEdge = true);
+
+/**
+ * @brief レイヤへエフェクトを追加する
+ * @details レイヤの未知キー "ef" にエフェクトを追加する（既存があれば追記）。
+ * @param layer 対象のレイヤ（破壊的に変更）
+ * @param effect 追加するエフェクトノード
+ */
+void addEffect(Layer& layer, const json& effect);
+
 /**
  * @brief 16進色文字列を解析する
  * @param hex "#rgb" / "#rrggbb" / "#rrggbbaa" 形式の文字列（大文字小文字は区別しない）。先頭の '#' は省略可。

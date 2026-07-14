@@ -585,6 +585,278 @@ void writeLottieZip(const Document& doc, const std::string& path) {
 }  // namespace
 
 /**
+ * @brief 静的プロパティ値（数値）の json ノードを生成する
+ * @details "a":0 は「アニメーションなし（静的）」を意味する。キー "k" に実値を保持する。
+ * @param v 静的に設定する数値
+ * @return {"a":0,"k":<v>} の形の json ノード
+ */
+json staticProp(double v) {
+  // 静的プロパティ（a=0）の定型を組み立てる
+  return parseJson("{\"a\":0,\"k\":" + std::to_string(v) + "}");
+}
+
+/**
+ * @brief 静的プロパティ値（配列リテラル）の json ノードを生成する
+ * @details "a":0 は「アニメーションなし（静的）」を意味する。キー "k" に実値を保持する。
+ * @param arr JSON 配列リテラル文字列（例: "[100,100]"）
+ * @return {"a":0,"k":<arr>} の形の json ノード
+ */
+json staticProp(std::string_view arr) {
+  // 静的プロパティ（a=0）の定型を組み立てる
+  return parseJson("{\"a\":0,\"k\":" + std::string(arr) + "}");
+}
+
+/**
+ * @brief シェイプグループ用のトランスフォーム（ty="tr"）を生成する
+ * @details シェイプグループ末尾に必須のトランスフォーム。原点・等倍・不透明な既定値とする。
+ * @return トランスフォームノード（ty="tr"）を表す json
+ */
+json makeShapeTransform() {
+  // p=位置, a=アンカー, s=スケール(%), r=回転(度), o=不透明度(%)
+  return parseJson(
+      "{\"ty\":\"tr\","
+      "\"p\":{\"a\":0,\"k\":[0,0]},"
+      "\"a\":{\"a\":0,\"k\":[0,0]},"
+      "\"s\":{\"a\":0,\"k\":[100,100]},"
+      "\"r\":{\"a\":0,\"k\":0},"
+      "\"o\":{\"a\":0,\"k\":100}}");
+}
+
+/**
+ * @brief 長方形シェイプ（ty="rc"）を生成する
+ * @param w 幅（レイヤ原点を中心とする）
+ * @param h 高さ（レイヤ原点を中心とする）
+ * @param round 角丸め半径（0=角丸めなし）
+ * @return シェイプアイテムを表す json ノード
+ */
+json makeRect(double w, double h, double round) {
+  // d=1 は描画方向（順方向）を示す既定値
+  json n = parseJson(
+      "{\"ty\":\"rc\",\"d\":1,"
+      "\"s\":{\"a\":0,\"k\":[0,0]},\"p\":{\"a\":0,\"k\":[0,0]},\"r\":{\"a\":0,\"k\":0}}");
+  // サイズと角丸め半径を指定値で上書きする
+  n["s"] = staticProp("[" + std::to_string(w) + "," + std::to_string(h) + "]");
+  n["r"] = staticProp(round);
+  return n;
+}
+
+/**
+ * @brief 楕円シェイプ（ty="el"）を生成する
+ * @param w 幅（レイヤ原点を中心とする）
+ * @param h 高さ（レイヤ原点を中心とする）
+ * @return シェイプアイテムを表す json ノード
+ */
+json makeEllipse(double w, double h) {
+  // d=1 は描画方向（順方向）を示す既定値
+  json n = parseJson(
+      "{\"ty\":\"el\",\"d\":1,"
+      "\"s\":{\"a\":0,\"k\":[0,0]},\"p\":{\"a\":0,\"k\":[0,0]}}");
+  // サイズを指定値で上書きする
+  n["s"] = staticProp("[" + std::to_string(w) + "," + std::to_string(h) + "]");
+  return n;
+}
+
+/**
+ * @brief 単色塗りつぶし（ty="fl"）を生成する
+ * @param hex 色（#rrggbb 等）
+ * @param opacity 不透明度（0～100、単位はパーセント）
+ * @return シェイプアイテムを表す json ノード
+ */
+json makeFill(std::string_view hex, double opacity) {
+  const auto c = parseHexColor(hex);
+  if (!c) {
+    throw std::invalid_argument("invalid color: " + std::string(hex));
+  }
+  // r=1 は塗りつぶしルール（nonzero）、bm=0 はブレンドモード（通常）の既定値
+  json n = parseJson(
+      "{\"ty\":\"fl\",\"r\":1,\"bm\":0,"
+      "\"o\":{\"a\":0,\"k\":0},\"c\":{\"a\":0,\"k\":[0,0,0,1]}}");
+  // 不透明度と色（RGBA、各成分 0.0～1.0）を指定値で上書きする
+  n["o"] = staticProp(opacity);
+  n["c"] = staticProp("[" + std::to_string(c->r) + "," + std::to_string(c->g) + "," +
+                      std::to_string(c->b) + "," + std::to_string(c->a) + "]");
+  return n;
+}
+
+/**
+ * @brief 単色ストローク（ty="st"）を生成する
+ * @param hex 色（#rrggbb 等）
+ * @param width 線幅（単位は composition のピクセル）
+ * @param opacity 不透明度（0～100、単位はパーセント）
+ * @return シェイプアイテムを表す json ノード
+ */
+json makeStroke(std::string_view hex, double width, double opacity) {
+  const auto c = parseHexColor(hex);
+  if (!c) {
+    throw std::invalid_argument("invalid color: " + std::string(hex));
+  }
+  // r=1: 塗りつぶしルール, bm=0: ブレンドモード(通常)
+  // lc=2: 線端をラウンド, lj=2: 線結合をラウンド, ml=4: マイター限界値(既定)
+  json n = parseJson(
+      "{\"ty\":\"st\",\"r\":1,\"bm\":0,\"lc\":2,\"lj\":2,\"ml\":4,"
+      "\"o\":{\"a\":0,\"k\":0},\"w\":{\"a\":0,\"k\":0},\"c\":{\"a\":0,\"k\":[0,0,0,1]}}");
+  // 不透明度・線幅・色を指定値で上書きする
+  n["o"] = staticProp(opacity);
+  n["w"] = staticProp(width);
+  n["c"] = staticProp("[" + std::to_string(c->r) + "," + std::to_string(c->g) + "," +
+                      std::to_string(c->b) + "," + std::to_string(c->a) + "]");
+  return n;
+}
+
+/**
+ * @brief トリムパス修飾（ty="tm"）を生成する
+ * @param startPct 開始位置（0～100、パーセント）
+ * @param endPct 終了位置（0～100、パーセント）
+ * @param offsetDeg オフセット（度）
+ * @param simultaneous true=全パスを同時にトリム, false=各パスを個別にトリム
+ * @return シェイプ修飾アイテムを表す json ノード
+ */
+json makeTrimPath(double startPct, double endPct, double offsetDeg, bool simultaneous) {
+  // m はトリムモード（1=同時, 2=個別）。AE の trim multiple shapes に対応。
+  const int m = simultaneous ? 1 : 2;
+  return parseJson(
+      "{\"ty\":\"tm\","
+      "\"s\":{\"a\":0,\"k\":" + std::to_string(startPct) + "},"
+      "\"e\":{\"a\":0,\"k\":" + std::to_string(endPct) + "},"
+      "\"o\":{\"a\":0,\"k\":" + std::to_string(offsetDeg) + "},"
+      "\"m\":" + std::to_string(m) + "}");
+}
+
+/**
+ * @brief シェイプレイヤ（ty=4）を生成する
+ * @details 渡されたシェイプアイテムを 1 つのグループ（ty="gr"）にまとめ、
+ *          末尾にグループ用トランスフォーム（ty="tr"）を付与する。
+ *          レイヤの位置はトランスフォームの p で指定し、シェイプ自体は原点を基準に描画する。
+ * @param p レイヤパラメータ（items にシェイプと塗り/線を含める）
+ * @return 生成された Layer（ind は未設定。addLayer で付与される）
+ */
+Layer makeShapeLayer(const ShapeLayerParams& p) {
+  Layer l;
+  l.ty = 4;  // ty=4 はレイヤ種別「シェイプレイヤ」
+  l.nm = p.name;
+  l.ip = p.from;  // イン点（表示開始フレーム）
+  l.op = p.to;    // アウト点（表示終了フレーム）
+  l.st = p.from;  // 開始時間（親タイムライン上の開始フレーム）
+
+  // レイヤトランスフォーム：位置でシェイプ全体を移動する
+  Transform ks;
+  ks.o = staticProp(p.opacity);           // 不透明度（%）
+  ks.r = staticProp(0.0);                 // 回転（度）
+  ks.p = staticProp("[" + std::to_string(p.x) + "," + std::to_string(p.y) + ",0]");  // 位置（中心）
+  ks.a = staticProp("[0,0,0]");           // アンカーポイント
+  ks.s = staticProp("[100,100,100]");      // スケール（%・等倍）
+  l.ks = ks;
+
+  // シェイプアイテムを 1 つのグループにまとめる（末尾に tr を付与）
+  json group = parseJson("{\"ty\":\"gr\",\"nm\":\"Group\",\"it\":[]}");
+  auto& it   = group["it"];
+  for (auto& item : p.items) {
+    it.get_array().push_back(item);
+  }
+  it.get_array().push_back(makeShapeTransform());
+
+  // shapes 配列へグループを 1 件登録する
+  json shapes = parseJson("[]");
+  shapes.get_array().push_back(group);
+  l.shapes = shapes;
+  return l;
+}
+
+/**
+ * @brief Document のトップレベルへレイヤを追加する
+ * @details 既存レイヤの最大 ind に +1 した値を ind として付与する（Lottie のレイヤ順序は ind で参照される）。
+ * @param doc 対象の Document（破壊的に変更）
+ * @param layer 追加するレイヤ
+ */
+void addLayer(Document& doc, Layer layer) {
+  int maxInd = 0;  // 既存レイヤの最大 ind（未設定時は 0 から開始）
+  for (auto& l : doc.layers) {
+    const auto f = l.extra.find("ind");
+    if (f != l.extra.end() && f->second.is_number()) {
+      const int v = f->second.as<int>();
+      if (v > maxInd) {
+        maxInd = v;
+      }
+    }
+  }
+  // 重複しないよう最大値 +1 を割り当てる
+  layer.extra["ind"] = parseJson(std::to_string(maxInd + 1));
+  doc.layers.push_back(std::move(layer));
+}
+
+/**
+ * @brief 名前でレイヤを検索する（トップレベルおよびアセット内のプリコンポジション）
+ * @param doc 対象の Document
+ * @param name 検索するレイヤ名
+ * @return 見つかった場合は Layer へのポインタ、なければ nullptr
+ */
+Layer* findLayer(Document& doc, std::string_view name) {
+  // トップレベルのレイヤを走査
+  for (auto& l : doc.layers) {
+    if (l.nm && *l.nm == name) {
+      return &l;
+    }
+  }
+  // アセット内のプリコンポジションのレイヤも走査
+  if (doc.assets) {
+    for (auto& a : *doc.assets) {
+      if (!a.layers) {
+        continue;
+      }
+      for (auto& l : *a.layers) {
+        if (l.nm && *l.nm == name) {
+          return &l;
+        }
+      }
+    }
+  }
+  return nullptr;
+}
+
+/**
+ * @brief ガウシアンブラー（AE 互換）エフェクトノードを生成する
+ * @details After Effects の「Gaussian Blur」エフェクトと互換な構造を生成する。
+ *          各プロパティは AE のマッチネーム（mn）で識別され、レンダラによっては
+ *          この mn に依存してマッピングされるため既定値を維持する。
+ * @param stddev ブラー半径
+ * @param repeatEdge エッジピクセルを繰り返すか（true=繰り返す）
+ * @return レイヤエフェクト（ef）に追加可能な json ノード
+ */
+json makeGaussianBlur(double stddev, bool repeatEdge) {
+  // ty=0: AE 標準エフェクト, np=3: プロパティ数(3),
+  // ix: プロパティのインデックス, mn: AE マッチネーム, en=1: 有効
+  return parseJson(
+      "{\"ty\":0,\"nm\":\"Gaussian Blur\",\"np\":3,\"mn\":\"ADBE Gaussian Blur\","
+      "\"ix\":1,\"en\":1,\"ef\":["
+      "{\"ty\":\"slider\",\"nm\":\"Blur Dimensions\",\"mn\":\"ADBE Gaussian Blur-0001\",\"ix\":1,\"v\":{\"a\":0,\"k\":1}},"
+      "{\"ty\":\"slider\",\"nm\":\"Blur Radius\",\"mn\":\"ADBE Gaussian Blur-0002\",\"ix\":2,\"v\":{\"a\":0,\"k\":" +
+      std::to_string(stddev) + "}},"
+      "{\"ty\":\"checkbox\",\"nm\":\"Repeat Edge Pixels\",\"mn\":\"ADBE Gaussian Blur-0003\",\"ix\":3,\"v\":{\"a\":0,\"k\":" +
+      std::to_string(repeatEdge ? 1 : 0) + "}}"
+      "]}");
+}
+
+/**
+ * @brief レイヤへエフェクトを追加する
+ * @details レイヤの未知キー "ef" にエフェクトを追加する（既存があれば追記、なければ新規配列を作成）。
+ * @param layer 対象のレイヤ（破壊的に変更）
+ * @param effect 追加するエフェクトノード
+ */
+void addEffect(Layer& layer, const json& effect) {
+  json arr;
+  const auto f = layer.extra.find("ef");
+  if (f == layer.extra.end() || !f->second.is_array()) {
+    // 既存の ef がない場合は空配列から開始する
+    arr = parseJson("[]");
+  } else {
+    arr = f->second;
+  }
+  // エフェクト配列へ追加し、未知キー ef へ書き戻す
+  arr.get_array().push_back(effect);
+  layer.extra["ef"] = arr;
+}
+
+/**
  * @brief 16 進色文字列を解析して Rgb に変換する
  * @param hex "#rgb" / "#rrggbb" / "#rrggbbaa"（'#' 省略可、大文字小文字区別なし）
  * @return 成功時は Rgb を保持する optional、失敗時は nullopt

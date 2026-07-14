@@ -11,6 +11,8 @@
 - **テキスト置換（`replaceText`）** — 指定したテキストレイヤー（`ty=5`）の文字列を書き換え。
 - **速度変更（`setSpeed`）** — タイムラインをスケール（係数 `>1` で遅く・長くなる）。キーフレームとレイヤーの `ip`/`op`/`st` を一括調整。
 - **バリエーション生成（`generateVariations`）** — 1 つの元データから色・テキスト・速度の異なる複数バリエーションを生成。
+- **新規シェイプレイヤの追加（`--add-shape`）** — 長方形/楕円のシェイプレイヤを指定位置・サイズ・色・表示時間で新規挿入。
+- **エフェクトの追加（`--add-effect`）** — 指定レイヤへガウシアンブラー等のエフェクトを追加。
 
 ## 依存関係
 
@@ -60,6 +62,8 @@ lottieproc <input> -o <output> [--recolor <hex>] [--from <hex>] [--text <layer> 
 | `--text <layer> <str>` | 指定レイヤー名のテキストを置換 |
 | `--speed <factor>` | タイムラインをスケール（`>1` で遅くなる） |
 | `--variations <n>` | N 個のバリエーションを `<stem>_1<ext>` … として出力 |
+| `--add-shape <type> <x> <y> <w> <h> <color> <from> <to> [name]` | シェイプレイヤ（rect/ellipse）を追加。中心 `(x,y)`、サイズ `(w,h)`、色 `color`、`[from,to]` フレーム表示 |
+| `--add-effect <layer> <type> <value>` | 指定レイヤへエフェクトを追加（例: `blur <半径>`） |
 
 ### 使用例
 
@@ -78,6 +82,9 @@ lottieproc sample.json -o out.json --speed 2.0
 
 # 8 個のカラーバリエーションを .lottie として出力
 lottieproc sample.json -o out.lottie --variations 8
+
+# 赤い長方形レイヤを (100,100) に追加し、同じレイヤへブラーをかける
+lottieproc sample.json -o out.json --add-shape rect 100 100 80 40 "#ff0000" 0 60 "Box" --add-effect Box blur 8
 ```
 
 ## ライブラリ利用
@@ -114,6 +121,12 @@ int main() {
 | `replaceText(doc, layerName, newText)` | テキストを置換（戻り値は成功可否） |
 | `setSpeed(doc, factor)` | タイムラインをスケール（戻り値は処理フィールド数） |
 | `generateVariations(doc, paramSets)` | 複数バリエーションを生成 |
+| `makeRect/makeEllipse(w, h[, round])` | シェイプアイテム（json）を生成 |
+| `makeFill/makeStroke(hex, ...)` | 塗りつぶし/ストロークアイテム（json）を生成 |
+| `makeTrimPath(start, end[, offset, simultaneous])` | トリムパス修飾（json）を生成 |
+| `makeShapeLayer(params)` / `addLayer(doc, layer)` | シェイプレイヤを生成して Document へ追加 |
+| `findLayer(doc, name)` / `addEffect(layer, effect)` | レイヤ検索 / レイヤへエフェクト追加 |
+| `makeGaussianBlur(stddev[, repeatEdge])` | ガウシアンブラーエフェクト（json）を生成 |
 
 ## ライセンス
 
