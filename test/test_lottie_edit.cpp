@@ -1,20 +1,20 @@
 #include "catch2/catch_all.hpp"
-#include "lottie_edit.hpp"
+#include "lottiepp.hpp"
 
 TEST_CASE("parseHexColor") {
-  auto c = lottie_edit::parseHexColor("#ff0000");
+  auto c = lottiepp::parseHexColor("#ff0000");
   REQUIRE(c);
   REQUIRE(c->r == Catch::Approx(1.0f));
   REQUIRE(c->g == Catch::Approx(0.0f));
   REQUIRE(c->b == Catch::Approx(0.0f));
 
-  auto shortc = lottie_edit::parseHexColor("#0f0");
+  auto shortc = lottiepp::parseHexColor("#0f0");
   REQUIRE(shortc);
   REQUIRE(shortc->g == Catch::Approx(1.0f));
 }
 
 TEST_CASE("recolor static fill") {
-  auto doc = lottie_edit::parse(R"({
+  auto doc = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
     "layers": [{
       "ty": 4, "nm": "Shape", "ip": 0, "op": 60, "st": 0,
@@ -25,7 +25,7 @@ TEST_CASE("recolor static fill") {
     }]
   })");
 
-  const auto n = lottie_edit::recolor(doc, "#ff0000", "#00ff00");
+  const auto n = lottiepp::recolor(doc, "#ff0000", "#00ff00");
   REQUIRE(n == 1);
   REQUIRE(doc.layers.size() == 1);
   REQUIRE(doc.layers[0].shapes);
@@ -34,7 +34,7 @@ TEST_CASE("recolor static fill") {
 }
 
 TEST_CASE("replaceText") {
-  auto doc = lottie_edit::parse(R"({
+  auto doc = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
     "layers": [{
       "ty": 5, "nm": "Title", "ip": 0, "op": 60, "st": 0,
@@ -42,14 +42,14 @@ TEST_CASE("replaceText") {
     }]
   })");
 
-  REQUIRE(lottie_edit::replaceText(doc, "Title", "World"));
+  REQUIRE(lottiepp::replaceText(doc, "Title", "World"));
   REQUIRE(doc.layers[0].t);
   REQUIRE((*doc.layers[0].t->d->k)[0]["s"]["t"].as<std::string>() == "World");
-  REQUIRE_FALSE(lottie_edit::replaceText(doc, "Missing", "X"));
+  REQUIRE_FALSE(lottiepp::replaceText(doc, "Missing", "X"));
 }
 
 TEST_CASE("setSpeed scales timing") {
-  auto doc = lottie_edit::parse(R"({
+  auto doc = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
     "layers": [{
       "ty": 4, "nm": "Shape", "ip": 0, "op": 60, "st": 10,
@@ -57,7 +57,7 @@ TEST_CASE("setSpeed scales timing") {
     }]
   })");
 
-  const auto n = lottie_edit::setSpeed(doc, 2.0);
+  const auto n = lottiepp::setSpeed(doc, 2.0);
   REQUIRE(n >= 3);
   REQUIRE(doc.op.value() == Catch::Approx(120.0));
   REQUIRE(doc.layers[0].op.value() == Catch::Approx(120.0));
@@ -66,7 +66,7 @@ TEST_CASE("setSpeed scales timing") {
 }
 
 TEST_CASE("unknown fields preserved") {
-  auto doc = lottie_edit::parse(R"({
+  auto doc = lottiepp::parse(R"({
     "fr": 30, "ip": 0, "op": 30, "w": 10, "h": 10,
     "ddd": 0,
     "meta": {"g": "test"},
@@ -81,15 +81,15 @@ TEST_CASE("unknown fields preserved") {
   REQUIRE(doc.extra.contains("meta"));
   REQUIRE(doc.layers[0].extra.contains("ind"));
 
-  const auto text = lottie_edit::dump(doc);
-  auto again = lottie_edit::parse(text);
+  const auto text = lottiepp::dump(doc);
+  auto again = lottiepp::parse(text);
   REQUIRE(again.extra.contains("ddd"));
   REQUIRE(again.extra.contains("meta"));
   REQUIRE(again.layers[0].extra.contains("ind"));
 }
 
 TEST_CASE("generateVariations") {
-  auto doc = lottie_edit::parse(R"({
+  auto doc = lottiepp::parse(R"({
     "fr": 30, "ip": 0, "op": 30, "w": 10, "h": 10,
     "layers": [{
       "ty": 4, "nm": "S", "ip": 0, "op": 30, "st": 0,
@@ -97,32 +97,32 @@ TEST_CASE("generateVariations") {
     }]
   })");
 
-  std::vector<lottie_edit::VariationParams> params(2);
+  std::vector<lottiepp::VariationParams> params(2);
   params[0].recolor_to = "#ff0000";
   params[1].recolor_to = "#0000ff";
   params[1].speed     = 2.0;
 
-  auto outs = lottie_edit::generateVariations(doc, params);
+  auto outs = lottiepp::generateVariations(doc, params);
   REQUIRE(outs.size() == 2);
   REQUIRE((*outs[0].layers[0].shapes)[0]["c"]["k"][0].as<float>() == Catch::Approx(1.0f));
   REQUIRE(outs[1].op.value() == Catch::Approx(60.0));
 }
 
 TEST_CASE("addShapeLayer builds a valid layer") {
-  auto doc = lottie_edit::parse(R"({
+  auto doc = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 200, "h": 200, "layers": []
   })");
 
-  lottie_edit::ShapeLayerParams p;
+  lottiepp::ShapeLayerParams p;
   p.name = "Box";
   p.x    = 50;
   p.y    = 40;
   p.from = 0;
   p.to   = 60;
-  p.items.push_back(lottie_edit::makeRect(80, 40));
-  p.items.push_back(lottie_edit::makeFill("#00ff00"));
+  p.items.push_back(lottiepp::makeRect(80, 40));
+  p.items.push_back(lottiepp::makeFill("#00ff00"));
 
-  lottie_edit::addLayer(doc, lottie_edit::makeShapeLayer(p));
+  lottiepp::addLayer(doc, lottiepp::makeShapeLayer(p));
   REQUIRE(doc.layers.size() == 1);
 
   const auto& layer = doc.layers[0];
@@ -132,7 +132,7 @@ TEST_CASE("addShapeLayer builds a valid layer") {
   REQUIRE(layer.extra.at("ind").as<int>() == 1);
 
   // ラウンドトリップ後にシェイプが保持されること
-  auto again = lottie_edit::parse(lottie_edit::dump(doc));
+  auto again = lottiepp::parse(lottiepp::dump(doc));
   REQUIRE(again.layers.size() == 1);
   const auto& shapes = *again.layers[0].shapes;
   REQUIRE(shapes[0]["ty"].as<std::string>() == "gr");
@@ -144,17 +144,17 @@ TEST_CASE("addShapeLayer builds a valid layer") {
 }
 
 TEST_CASE("addEffect appends to ef") {
-  auto doc = lottie_edit::parse(R"({
+  auto doc = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 200, "h": 200,
     "layers": [{"ty": 4, "nm": "Target", "ip": 0, "op": 60, "st": 0, "ind": 1, "shapes": []}]
   })");
 
-  auto* layer = lottie_edit::findLayer(doc, "Target");
+  auto* layer = lottiepp::findLayer(doc, "Target");
   REQUIRE(layer != nullptr);
-  lottie_edit::addEffect(*layer, lottie_edit::makeGaussianBlur(12.0));
+  lottiepp::addEffect(*layer, lottiepp::makeGaussianBlur(12.0));
 
-  auto again = lottie_edit::parse(lottie_edit::dump(doc));
-  auto* l2   = lottie_edit::findLayer(again, "Target");
+  auto again = lottiepp::parse(lottiepp::dump(doc));
+  auto* l2   = lottiepp::findLayer(again, "Target");
   REQUIRE(l2 != nullptr);
   REQUIRE(l2->extra.contains("ef"));
   REQUIRE(l2->extra["ef"].is_array());
@@ -164,7 +164,7 @@ TEST_CASE("addEffect appends to ef") {
 }
 
 TEST_CASE("removeLayer removes by name") {
-  auto doc = lottie_edit::parse(R"({
+  auto doc = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
     "layers": [
       {"ty": 4, "nm": "Keep", "ip": 0, "op": 60, "st": 0, "shapes": []},
@@ -176,7 +176,7 @@ TEST_CASE("removeLayer removes by name") {
     }]
   })");
 
-  REQUIRE(lottie_edit::removeLayer(doc, "Drop"));
+  REQUIRE(lottiepp::removeLayer(doc, "Drop"));
   REQUIRE(doc.layers.size() == 1);
   REQUIRE((doc.layers[0].nm && *doc.layers[0].nm == "Keep"));
   REQUIRE((doc.assets && doc.assets->size() == 1));
@@ -184,13 +184,13 @@ TEST_CASE("removeLayer removes by name") {
   REQUIRE(doc.assets->at(0).layers->empty());
 
   // ラウンドトリップ後も削除が維持される
-  auto again = lottie_edit::parse(lottie_edit::dump(doc));
+  auto again = lottiepp::parse(lottiepp::dump(doc));
   REQUIRE(again.layers.size() == 1);
-  REQUIRE_FALSE(lottie_edit::removeLayer(again, "Missing"));
+  REQUIRE_FALSE(lottiepp::removeLayer(again, "Missing"));
 }
 
 TEST_CASE("makeTrimPath builds tm") {
-  auto tm = lottie_edit::makeTrimPath(25, 75, 0, true);
+  auto tm = lottiepp::makeTrimPath(25, 75, 0, true);
   REQUIRE(tm["ty"].as<std::string>() == "tm");
   REQUIRE(tm["m"].as<int>() == 1);
   REQUIRE(tm["s"]["k"].as<double>() == Catch::Approx(25.0));
@@ -198,7 +198,7 @@ TEST_CASE("makeTrimPath builds tm") {
 }
 
 TEST_CASE("makeDocument creates empty valid doc") {
-  auto doc = lottie_edit::makeDocument();
+  auto doc = lottiepp::makeDocument();
   REQUIRE(doc.layers.empty());
   REQUIRE((doc.v && *doc.v == "5.7.4"));
   REQUIRE(doc.fr.value() == Catch::Approx(60.0));
@@ -209,19 +209,19 @@ TEST_CASE("makeDocument creates empty valid doc") {
   REQUIRE_FALSE(doc.nm);
 
   // ラウンドトリップで妥当な空ドキュメントとして保存・再解析できる
-  auto again = lottie_edit::parse(lottie_edit::dump(doc));
+  auto again = lottiepp::parse(lottiepp::dump(doc));
   REQUIRE(again.layers.empty());
   REQUIRE(again.w.value() == 512);
 }
 
 TEST_CASE("makeDocument respects params") {
-  lottie_edit::DocumentParams p;
+  lottiepp::DocumentParams p;
   p.name = "New";
   p.fr   = 30.0;
   p.w    = 1920;
   p.h    = 1080;
   p.op   = 90.0;
-  auto doc = lottie_edit::makeDocument(p);
+  auto doc = lottiepp::makeDocument(p);
   REQUIRE((doc.nm && *doc.nm == "New"));
   REQUIRE(doc.fr.value() == Catch::Approx(30.0));
   REQUIRE(doc.w.value() == 1920);

@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace lottie_edit {
+namespace lottiepp {
 
 // Lottie の多様な（型が不定な）部分木（シェイプ、キーフレーム等）を保持する動的 JSON ノード
 using json = glz::generic;
@@ -445,4 +445,4 @@ std::size_t setSpeed(Document& doc, double factor);
  */
 std::vector<Document> generateVariations(const Document& doc, const std::vector<VariationParams>& paramSets);
 
-}  // namespace lottie_edit
+}  // namespace lottiepp

@@ -58,22 +58,22 @@ find_package(glaze REQUIRED CONFIG)
 find_package(miniz REQUIRED CONFIG)
 find_package(Catch2 CONFIG QUIET)
 
-# --- lottie_edit library (static) ---
-add_library(lottie_edit STATIC
-    src/lottie_edit.cpp
+# --- lottiepp library (static) ---
+add_library(lottiepp STATIC
+    src/lottiepp.cpp
 )
-target_include_directories(lottie_edit
+target_include_directories(lottiepp
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_link_libraries(lottie_edit PUBLIC glaze::glaze miniz::miniz)
-target_compile_features(lottie_edit PUBLIC ${STD_CPP})
+target_link_libraries(lottiepp PUBLIC glaze::glaze miniz::miniz)
+target_compile_features(lottiepp PUBLIC ${STD_CPP})
 
 # --- lottieproc CLI ---
 if(BUILD_CLI)
     add_executable(lottieproc src/main.cpp)
-    target_link_libraries(lottieproc PRIVATE lottie_edit)
+    target_link_libraries(lottieproc PRIVATE lottiepp)
     target_compile_features(lottieproc PRIVATE ${STD_CPP})
 endif()
 
@@ -94,13 +94,13 @@ set(LOTTIPP_TARGETS_EXPORT lottieppTargets)
 set(LOTTIPP_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/lottiepp"
     CACHE PATH "CMake package config location")
 
-install(TARGETS lottie_edit
+install(TARGETS lottiepp
     EXPORT ${LOTTIPP_TARGETS_EXPORT}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(FILES src/lottie_edit.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES src/lottiepp.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(BUILD_CLI)
     install(TARGETS lottieproc

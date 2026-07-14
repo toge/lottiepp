@@ -1,4 +1,4 @@
-#include "lottie_edit.hpp"
+#include "lottiepp.hpp"
 
 #include "miniz.h"
 
@@ -12,7 +12,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace lottie_edit {
+namespace lottiepp {
 namespace {
 
 // 読み込み時のオプション：未知キーをエラーにせず、null メンバは読み飛ばす
@@ -1199,4 +1199,4 @@ std::vector<Document> generateVariations(const Document& doc, const std::vector<
   return out;
 }
 
-}  // namespace lottie_edit
+}  // namespace lottiepp

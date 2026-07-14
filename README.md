@@ -91,25 +91,25 @@ lottieproc sample.json -o out.json --add-shape rect 100 100 80 40 "#ff0000" 0 60
 
 ## ライブラリ利用
 
-`lottie_edit` というスタティックライブラリとしてリンクできます。
+`lottiepp` というスタティックライブラリとしてリンクできます。
 
 ```cpp
-#include "lottie_edit.hpp"
+#include "lottiepp.hpp"
 
 int main() {
-  auto doc = lottie_edit::load("sample.json");
+  auto doc = lottiepp::load("sample.json");
 
   // すべての色を赤に置換
-  lottie_edit::recolor(doc, "", "#ff0000");
+  lottiepp::recolor(doc, "", "#ff0000");
 
   // テキストレイヤー "Title" を書き換え
-  lottie_edit::replaceText(doc, "Title", "こんにちは");
+  lottiepp::replaceText(doc, "Title", "こんにちは");
 
   // 2 倍速（遅く）する
-  lottie_edit::setSpeed(doc, 2.0);
+  lottiepp::setSpeed(doc, 2.0);
 
   // .json または .lottie として保存
-  lottie_edit::save(doc, "out.json");
+  lottiepp::save(doc, "out.json");
 }
 ```
 

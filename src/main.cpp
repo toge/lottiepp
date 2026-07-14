@@ -1,4 +1,4 @@
-#include "lottie_edit.hpp"
+#include "lottiepp.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -58,7 +58,7 @@ std::string stemWithIndex(const std::string& output, int index) {
  * @param base すべてのバリエーションに適用するベースパラメータ
  * @return 生成された VariationParams の配列
  */
-std::vector<lottie_edit::VariationParams> makeDefaultVariations(int n, const lottie_edit::VariationParams& base) {
+std::vector<lottiepp::VariationParams> makeDefaultVariations(int n, const lottiepp::VariationParams& base) {
   // バリエーション用の既定カラーパレット（指定色がない場合に順繰りで使用）
   static const char* kPalette[] = {
       "#ff0000", "#00aa00", "#0066ff", "#ff9900", "#9900ff", "#00cccc", "#ff3399", "#333333",
@@ -66,10 +66,10 @@ std::vector<lottie_edit::VariationParams> makeDefaultVariations(int n, const lot
   // パレットの要素数（配列サイズから算出）
   constexpr int kPaletteN = static_cast<int>(sizeof(kPalette) / sizeof(kPalette[0]));
 
-  std::vector<lottie_edit::VariationParams> sets;
+  std::vector<lottiepp::VariationParams> sets;
   sets.reserve(static_cast<std::size_t>(n));
   for (int i = 0; i < n; ++i) {
-    lottie_edit::VariationParams p = base;
+    lottiepp::VariationParams p = base;
     // 色が未指定ならパレットから循環的に選択する
     if (!p.recolor_to) {
       p.recolor_to = kPalette[i % kPaletteN];
@@ -224,11 +224,11 @@ int main(int argc, char** argv) {
     }
 
     // 入力ファイルを読み込み Document を構築
-    auto doc = lottie_edit::load(input);
+    auto doc = lottiepp::load(input);
 
     // 新規シェイプレイヤの追加（エフェクトより先に適用して名前解決する）
     for (auto& s : pendingShapes) {
-      lottie_edit::ShapeLayerParams p;
+      lottiepp::ShapeLayerParams p;
       // 名前が未指定の場合はシェイプ種別をそのままレイヤ名とする
       p.name  = s.name.empty() ? s.type : s.name;
       p.x     = s.x;
@@ -237,25 +237,25 @@ int main(int argc, char** argv) {
       p.to    = s.to;
       // 種別に応じたシェイプを生成し、塗りつぶしを追加する
       if (s.type == "rect") {
-        p.items.push_back(lottie_edit::makeRect(s.w, s.h));
+        p.items.push_back(lottiepp::makeRect(s.w, s.h));
       } else if (s.type == "ellipse") {
-        p.items.push_back(lottie_edit::makeEllipse(s.w, s.h));
+        p.items.push_back(lottiepp::makeEllipse(s.w, s.h));
       } else {
         throw std::runtime_error("unknown shape type: " + s.type);
       }
-      p.items.push_back(lottie_edit::makeFill(s.color));
-      lottie_edit::addLayer(doc, lottie_edit::makeShapeLayer(p));
+      p.items.push_back(lottiepp::makeFill(s.color));
+      lottiepp::addLayer(doc, lottiepp::makeShapeLayer(p));
       std::cout << "add-shape: " << p.name << "\n";
     }
 
     // レイヤへのエフェクト追加（名前で対象レイヤを解決する）
     for (auto& e : pendingEffects) {
-      auto* layer = lottie_edit::findLayer(doc, e.layer);
+      auto* layer = lottiepp::findLayer(doc, e.layer);
       if (!layer) {
         throw std::runtime_error("layer not found for effect: " + e.layer);
       }
       if (e.type == "blur") {
-        lottie_edit::addEffect(*layer, lottie_edit::makeGaussianBlur(e.value));
+        lottiepp::addEffect(*layer, lottiepp::makeGaussianBlur(e.value));
       } else {
         throw std::runtime_error("unknown effect type: " + e.type);
       }
@@ -263,7 +263,7 @@ int main(int argc, char** argv) {
     }
 
     // コマンドライン引数からベースパラメータを組み立てる
-    lottie_edit::VariationParams base;
+    lottiepp::VariationParams base;
     if (!recolorTo.empty()) {
       base.recolor_to = recolorTo;
     }
@@ -281,12 +281,12 @@ int main(int argc, char** argv) {
     // --variations が指定された場合は、複数のバリエーションを生成して出力する
     if (variations > 0) {
       const auto sets = makeDefaultVariations(variations, base);
-      const auto docs = lottie_edit::generateVariations(doc, sets);
+      const auto docs = lottiepp::generateVariations(doc, sets);
       for (std::size_t i = 0; i < docs.size(); ++i) {
         // ラウンドトリップでシリアライズ/パースが通ることを確認（戻り値は利用しない）
-        (void)lottie_edit::parse(lottie_edit::dump(docs[i]));
+        (void)lottiepp::parse(lottiepp::dump(docs[i]));
         const std::string path = stemWithIndex(output, static_cast<int>(i + 1));
-        lottie_edit::save(docs[i], path);
+        lottiepp::save(docs[i], path);
         std::cout << "wrote " << path << "\n";
       }
       return 0;
@@ -294,27 +294,27 @@ int main(int argc, char** argv) {
 
     // 単一出力の場合：各処理を順に適用する
     if (base.recolor_to) {
-      const auto n = lottie_edit::recolor(doc, base.recolor_from.value_or(""), *base.recolor_to);
+      const auto n = lottiepp::recolor(doc, base.recolor_from.value_or(""), *base.recolor_to);
       std::cout << "recolor: " << n << " values\n";
     }
     if (base.text_layer && base.text_value) {
-      const bool ok = lottie_edit::replaceText(doc, *base.text_layer, *base.text_value);
+      const bool ok = lottiepp::replaceText(doc, *base.text_layer, *base.text_value);
       std::cout << "replaceText: " << (ok ? "ok" : "layer not found") << "\n";
     }
     if (base.speed) {
-      const auto n = lottie_edit::setSpeed(doc, *base.speed);
+      const auto n = lottiepp::setSpeed(doc, *base.speed);
       std::cout << "setSpeed: " << n << " fields\n";
     }
     // 指定されたレイヤの削除（名前一致）
     for (auto& name : removeLayers) {
-      const bool ok = lottie_edit::removeLayer(doc, name);
+      const bool ok = lottiepp::removeLayer(doc, name);
       std::cout << "removeLayer " << name << ": " << (ok ? "ok" : "not found") << "\n";
     }
 
     // ラウンドトリップ検証
-    (void)lottie_edit::parse(lottie_edit::dump(doc));
+    (void)lottiepp::parse(lottiepp::dump(doc));
 
-    lottie_edit::save(doc, output);
+    lottiepp::save(doc, output);
     std::cout << "wrote " << output << "\n";
     return 0;
   } catch (const std::exception& ex) {
