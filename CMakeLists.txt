@@ -3,6 +3,7 @@ project(lottiepp VERSION 0.1.0 LANGUAGES C CXX)
 
 option(BUILD_TEST "Enable tests" ON)
 option(BUILD_CLI "Build lottieproc CLI" ON)
+option(ENABLE_CHART "Build chart/plot sample + helper" ON)
 
 set(STD_CPP cxx_std_23)
 
@@ -82,6 +83,20 @@ if(BUILD_TEST AND Catch2_FOUND)
     add_subdirectory(test)
 elseif(BUILD_TEST AND NOT Catch2_FOUND)
     message(STATUS "Catch2 not found; tests disabled")
+endif()
+
+# --- chart/plot helper (ENABLE_CHART=ON) ---
+if(ENABLE_CHART)
+    # プロット機能を lottiepp ライブラリに統合してビルドする
+    target_sources(lottiepp PRIVATE src/chart.cpp)
+
+
+    target_include_directories(lottiepp PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
+
+    # サンプル実行ファイル
+    add_executable(line_chart_grow samples/line_chart_grow.cpp)
+    target_link_libraries(line_chart_grow PRIVATE lottiepp)
+    target_compile_features(line_chart_grow PRIVATE ${STD_CPP})
 endif()
 
 # ---------------------------------------------------------------------------

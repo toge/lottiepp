@@ -57,6 +57,11 @@ test.sh
 images*
 vcpkg_installed
 
+# 生成物・一時ファイル
+out/
+lottie-*.tar.gz
+*.gif
+
 # AI related
 doc/superpowers
 .serena
