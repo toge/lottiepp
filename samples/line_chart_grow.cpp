@@ -1,10 +1,13 @@
-// samples/line_chart_grow.cpp
-//
-// lottiepp::chart::plot を使った折れ線グラフ生成サンプル。
-// ENABLE_CHART=ON のときのみビルドされる。
-//
-// 実行:
-//   ./out/line_chart_grow out/line_chart.json
+/**
+ * @file    samples/line_chart_grow.cpp
+ * @brief   lottiepp::chart::plot を使った折れ線グラフ生成サンプル。
+ * @note    ENABLE_CHART=ON のときのみビルドされる。
+ *
+ * 実行例:
+ * @code
+ *   mkdir -p out && ./build/line_chart_grow out/line_chart.json
+ * @endcode
+ */
 
 #include "chart.hpp"
 
@@ -19,21 +22,23 @@ int main(int argc, char** argv) {
 
   using namespace lottiepp::chart;
 
-  // 系列 1: サンプルデータ（右へ伸びるアニメーション + 点マーカー）
+  // 系列 1: サンプルデータ（grow アニメーション + 点マーカーあり）
   Series s1;
   s1.name = "sales";
-  s1.color = "#2dd4bf";
+  s1.color = "#2dd4bf";   // ティール
   s1.showPoints = true;
+  s1.fillArea = true;
   s1.grow = true;
   s1.data = {
       {0, 12.0}, {1, 28.0}, {2, 19.0}, {3, 41.0},
       {4, 33.0}, {5, 55.0}, {6, 47.0}, {7, 72.0},
   };
 
-  // 系列 2: 比較用（別色、アニメーションなし）
+  // 系列 2: 比較用（別色、破線、アニメーションなし）
   Series s2;
   s2.name = "target";
-  s2.color = "#f472b6";
+  s2.color = "#f472b6";   // ピンク
+  s2.dashArray = {12, 8};
   s2.showPoints = false;
   s2.grow = false;
   s2.data = {
@@ -42,7 +47,10 @@ int main(int argc, char** argv) {
   };
 
   ChartOptions opt;
-  opt.duration = 2.0;  // grow アニメーション 2 秒
+  opt.duration = 2.0;
+  opt.showGrid = true;
+  opt.showLegend = true;
+  opt.showXValues = true;
 
   auto doc = plot({s1, s2}, opt);
   lottiepp::save(doc, argv[1]);
