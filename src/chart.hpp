@@ -66,6 +66,7 @@ struct ChartOptions {
   ChartType chartType = ChartType::Line;          ///< グラフの種類
   BarAnimation barAnimation = BarAnimation::BottomToTop; ///< 棒グラフのアニメーション種別
   double barWidthRatio = 0.8;          ///< 棒の幅（カテゴリ幅に対する比率, 0〜1）
+  bool horizontalBars = false;          ///< 横方向の棒グラフ
   // 凡例・ラベル
   bool showLegend = false;            ///< 凡例を表示
   bool showXValues = false;           ///< 横軸の数値ラベルを表示

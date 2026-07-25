@@ -360,8 +360,9 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
   dp.op = op;
   dp.w = opt.width;
   dp.h = opt.height;
-  dp.name = (opt.chartType == ChartType::Bar) ? "BarChart" :
-            (opt.chartType == ChartType::Scatter) ? "ScatterChart" : "LineChart";
+  dp.name = (opt.chartType == ChartType::Bar)
+    ? (opt.horizontalBars ? "HBarChart" : "BarChart")
+    : (opt.chartType == ChartType::Scatter) ? "ScatterChart" : "LineChart";
   auto doc = makeDocument(dp);
 
   // --- 各レイヤをあらかじめ計算しておく ---
@@ -369,56 +370,111 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
   std::vector<Layer> serLayers;
 
   if (opt.chartType == ChartType::Bar) {
-    // ---- 棒グラフ ----
-    const auto n = series[0].data.size();
-    const double catWidth = spanX / (n > 1 ? n - 1 : 1.0);
-    const double groupWidth = catWidth * opt.barWidthRatio;
-    const double barW = std::max(2.0, groupWidth / static_cast<double>(series.size()));
-    const double growDur = op * 0.6;
-    const double stagger = (n > 1) ? (op - growDur) / (n - 1) : 0.0;
+    if (opt.horizontalBars) {
+      // ---- 横棒グラフ ----
+      const auto n = series[0].data.size();
+      const double catHeight = spanY / (n > 1 ? n - 1 : 1.0);
+      const double groupHeight = catHeight * opt.barWidthRatio;
+      const double barH = std::max(2.0, groupHeight / static_cast<double>(series.size()));
+      const double growDur = op * 0.6;
+      const double stagger = (n > 1) ? (op - growDur) / (n - 1) : 0.0;
 
-    for (std::size_t i = 0; i < n; ++i) {
-      const double cx = (n == 1) ? x0 : x0 + (spanX * i) / (n - 1);
-      for (std::size_t si = 0; si < series.size(); ++si) {
-        const auto& s = series[si];
-        const double val = std::get<1>(s.data[i]);
-        const double barH = y0 - mapY(val);
-        if (barH <= 0.0) continue;
-        const double bx = cx - groupWidth / 2.0 + (si + 0.5) * (groupWidth / series.size());
+      for (std::size_t i = 0; i < n; ++i) {
+        const double cy = (n == 1) ? y0 : y0 - (spanY * i) / (n - 1);
+        for (std::size_t si = 0; si < series.size(); ++si) {
+          const auto& s = series[si];
+          const double val = std::get<1>(s.data[i]);
+          const double barW = (val - minY) / (maxY - minY) * spanX;
+          if (barW <= 0.0) continue;
+          const double by = cy - groupHeight / 2.0 + (si + 0.5) * (groupHeight / series.size());
 
-        Layer l;
-        l.ty = 4;
-        l.nm = s.name + "_b" + std::to_string(i);
-        const double start = (opt.barAnimation == BarAnimation::LeftToRight) ? i * stagger : 0.0;
-        l.ip = start;
-        l.op = op;
-        l.st = start;
+          Layer l;
+          l.ty = 4;
+          l.nm = s.name + "_b" + std::to_string(i);
+          const double start = i * stagger;
+          l.ip = start;
+          l.op = op;
+          l.st = start;
 
-        Transform ks;
-        ks.o = staticProp(100.0);
-        ks.r = staticProp(0.0);
-        ks.p = parseJson("{\"a\":0,\"k\":[" + std::to_string(bx) + "," + std::to_string(y0) + ",0]}");
-        ks.a = parseJson("{\"a\":0,\"k\":[0,0,0]}");
-        ks.s = parseJson(
-            "{\"a\":1,\"k\":["
-            "{\"i\":{\"x\":[0.4,0.4],\"y\":[1,1]},\"o\":{\"x\":[0.6,0.6],\"y\":[0,0]},\"t\":0,\"s\":[100,0]},"
-            "{\"t\":" + std::to_string(growDur) + ",\"s\":[100,100]}"
-            "]}");
-        l.ks = ks;
+          Transform ks;
+          ks.o = staticProp(100.0);
+          ks.r = staticProp(0.0);
+          ks.p = parseJson("{\"a\":0,\"k\":[" + std::to_string(x0) + "," + std::to_string(by) + ",0]}");
+          ks.a = parseJson("{\"a\":0,\"k\":[0,0,0]}");
+          ks.s = parseJson(
+              "{\"a\":1,\"k\":["
+              "{\"i\":{\"x\":[0.4,0.4],\"y\":[1,1]},\"o\":{\"x\":[0.6,0.6],\"y\":[0,0]},\"t\":0,\"s\":[0,100]},"
+              "{\"t\":" + std::to_string(growDur) + ",\"s\":[100,100]}"
+              "]}");
+          l.ks = ks;
 
-        json group = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
-        group["it"].get_array().push_back(parseJson(
-            "{\"ty\":\"rc\",\"nm\":\"rect\",\"p\":{\"a\":0,\"k\":[0," +
-            std::to_string(-barH / 2.0) + "]},\"s\":{\"a\":0,\"k\":[" +
-            std::to_string(barW) + "," + std::to_string(barH) + "]},\"r\":{\"a\":0,\"k\":0}}"));
-        group["it"].get_array().push_back(makeFill(s.color, 100.0));
-        group["it"].get_array().push_back(parseJson(
-            "{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
-            "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},\"o\":{\"a\":0,\"k\":100}}"));
-        json shapes = parseJson("[]");
-        shapes.get_array().push_back(group);
-        l.shapes = shapes;
-        serLayers.push_back(l);
+          json group = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
+          group["it"].get_array().push_back(parseJson(
+              "{\"ty\":\"rc\",\"nm\":\"rect\",\"p\":{\"a\":0,\"k\":[" +
+              std::to_string(barW / 2.0) + ",0]},\"s\":{\"a\":0,\"k\":[" +
+              std::to_string(barW) + "," + std::to_string(barH) + "]},\"r\":{\"a\":0,\"k\":0}}"));
+          group["it"].get_array().push_back(makeFill(s.color, 100.0));
+          group["it"].get_array().push_back(parseJson(
+              "{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
+              "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},\"o\":{\"a\":0,\"k\":100}}"));
+          json shapes = parseJson("[]");
+          shapes.get_array().push_back(group);
+          l.shapes = shapes;
+          serLayers.push_back(l);
+        }
+      }
+    } else {
+      // ---- 棒グラフ ----
+      const auto n = series[0].data.size();
+      const double catWidth = spanX / (n > 1 ? n - 1 : 1.0);
+      const double groupWidth = catWidth * opt.barWidthRatio;
+      const double barW = std::max(2.0, groupWidth / static_cast<double>(series.size()));
+      const double growDur = op * 0.6;
+      const double stagger = (n > 1) ? (op - growDur) / (n - 1) : 0.0;
+
+      for (std::size_t i = 0; i < n; ++i) {
+        const double cx = (n == 1) ? x0 : x0 + (spanX * i) / (n - 1);
+        for (std::size_t si = 0; si < series.size(); ++si) {
+          const auto& s = series[si];
+          const double val = std::get<1>(s.data[i]);
+          const double barH = y0 - mapY(val);
+          if (barH <= 0.0) continue;
+          const double bx = cx - groupWidth / 2.0 + (si + 0.5) * (groupWidth / series.size());
+
+          Layer l;
+          l.ty = 4;
+          l.nm = s.name + "_b" + std::to_string(i);
+          const double start = (opt.barAnimation == BarAnimation::LeftToRight) ? i * stagger : 0.0;
+          l.ip = start;
+          l.op = op;
+          l.st = start;
+
+          Transform ks;
+          ks.o = staticProp(100.0);
+          ks.r = staticProp(0.0);
+          ks.p = parseJson("{\"a\":0,\"k\":[" + std::to_string(bx) + "," + std::to_string(y0) + ",0]}");
+          ks.a = parseJson("{\"a\":0,\"k\":[0,0,0]}");
+          ks.s = parseJson(
+              "{\"a\":1,\"k\":["
+              "{\"i\":{\"x\":[0.4,0.4],\"y\":[1,1]},\"o\":{\"x\":[0.6,0.6],\"y\":[0,0]},\"t\":0,\"s\":[100,0]},"
+              "{\"t\":" + std::to_string(growDur) + ",\"s\":[100,100]}"
+              "]}");
+          l.ks = ks;
+
+          json group = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
+          group["it"].get_array().push_back(parseJson(
+              "{\"ty\":\"rc\",\"nm\":\"rect\",\"p\":{\"a\":0,\"k\":[0," +
+              std::to_string(-barH / 2.0) + "]},\"s\":{\"a\":0,\"k\":[" +
+              std::to_string(barW) + "," + std::to_string(barH) + "]},\"r\":{\"a\":0,\"k\":0}}"));
+          group["it"].get_array().push_back(makeFill(s.color, 100.0));
+          group["it"].get_array().push_back(parseJson(
+              "{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
+              "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},\"o\":{\"a\":0,\"k\":100}}"));
+          json shapes = parseJson("[]");
+          shapes.get_array().push_back(group);
+          l.shapes = shapes;
+          serLayers.push_back(l);
+        }
       }
     }
   } else if (opt.chartType == ChartType::Scatter) {
@@ -540,18 +596,27 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
     }
   }
 
-  // X 軸ラベル
+  // 軸ラベル（横棒グラフは Y 軸側、それ以外は X 軸側）
   std::vector<Layer> xlabelLayers;
   if (opt.showXValues && !series.empty()) {
     const auto& first = series[0];
     const auto n = first.data.size();
-    for (std::size_t i = 0; i < n; ++i) {
-      const double px = (opt.chartType == ChartType::Scatter)
-        ? mapX(static_cast<double>(std::get<0>(first.data[i])))
-        : ((n == 1) ? x0 : x0 + (spanX * static_cast<double>(i)) / (n - 1));
-      xlabelLayers.push_back(makeTextLayer(
-          std::to_string(std::get<0>(first.data[i])),
-          px, y0 + 20.0, 12.0, opt.axisColor, op, "XLabel" + std::to_string(i)));
+    if (opt.chartType == ChartType::Bar && opt.horizontalBars) {
+      for (std::size_t i = 0; i < n; ++i) {
+        const double cy = (n == 1) ? y0 : y0 - (spanY * i) / (n - 1);
+        xlabelLayers.push_back(makeTextLayer(
+            std::to_string(std::get<0>(first.data[i])),
+            x0 - 6.0, cy - 6.0, 12.0, opt.axisColor, op, "YLabel" + std::to_string(i)));
+      }
+    } else {
+      for (std::size_t i = 0; i < n; ++i) {
+        const double px = (opt.chartType == ChartType::Scatter)
+          ? mapX(static_cast<double>(std::get<0>(first.data[i])))
+          : ((n == 1) ? x0 : x0 + (spanX * static_cast<double>(i)) / (n - 1));
+        xlabelLayers.push_back(makeTextLayer(
+            std::to_string(std::get<0>(first.data[i])),
+            px, y0 + 20.0, 12.0, opt.axisColor, op, "XLabel" + std::to_string(i)));
+      }
     }
   }
 
