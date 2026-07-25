@@ -1,31 +1,33 @@
 /**
  * @file    samples/line_chart_grow.cpp
- * @brief   lottiepp::chart::plot を使った折れ線グラフ生成サンプル。
+ * @brief   lottiepp::chart::plot を使った折れ線グラフ／棒グラフ生成サンプル。
  * @note    ENABLE_CHART=ON のときのみビルドされる。
  *
  * 実行例:
  * @code
- *   mkdir -p out && ./build/line_chart_grow out/line_chart.json
+ *   ./build/line_chart_grow out/chart.json            # 折れ線グラフ
+ *   ./build/line_chart_grow out/chart.json bar         # 棒グラフ（下→上）
+ *   ./build/line_chart_grow out/chart.json bar left    # 棒グラフ（左→右）
  * @endcode
  */
 
 #include "chart.hpp"
 
 #include <iostream>
+#include <string>
 #include <vector>
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::cerr << "Usage: " << argv[0] << " <output.json>\n";
+    std::cerr << "Usage: " << argv[0] << " <output.json> [line|bar] [left]\n";
     return 1;
   }
 
   using namespace lottiepp::chart;
 
-  // 系列 1: サンプルデータ（grow アニメーション + 点マーカーあり）
   Series s1;
   s1.name = "sales";
-  s1.color = "#2dd4bf";   // ティール
+  s1.color = "#2dd4bf";
   s1.showPoints = true;
   s1.fillArea = true;
   s1.grow = true;
@@ -34,10 +36,9 @@ int main(int argc, char** argv) {
       {4, 33.0}, {5, 55.0}, {6, 47.0}, {7, 72.0},
   };
 
-  // 系列 2: 比較用（別色、破線、アニメーションなし）
   Series s2;
   s2.name = "target";
-  s2.color = "#f472b6";   // ピンク
+  s2.color = "#f472b6";
   s2.dashArray = {12, 8};
   s2.showPoints = false;
   s2.grow = false;
@@ -52,8 +53,16 @@ int main(int argc, char** argv) {
   opt.showLegend = true;
   opt.showXValues = true;
 
+  const std::string mode = (argc > 2) ? argv[2] : "line";
+  if (mode == "bar") {
+    opt.chartType = ChartType::Bar;
+    if (argc > 3 && std::string(argv[3]) == "left") {
+      opt.barAnimation = BarAnimation::LeftToRight;
+    }
+  }
+
   auto doc = plot({s1, s2}, opt);
   lottiepp::save(doc, argv[1]);
-  std::cout << "wrote " << argv[1] << "\n";
+  std::cout << "wrote " << argv[1] << " (" << ((opt.chartType == ChartType::Bar) ? "bar" : "line") << ")\n";
   return 0;
 }

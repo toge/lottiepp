@@ -21,6 +21,12 @@ namespace lottiepp::chart {
 /** @brief グラフ上の 1 点を表す型 */
 using Point = std::tuple<int, double>;
 
+/** @brief グラフ種別 */
+enum class ChartType { Line, Bar };
+
+/** @brief 棒グラフのアニメーション種別 */
+enum class BarAnimation { BottomToTop, LeftToRight };
+
 /**
  * @brief 1 つの系列を表す構造体
  * @details 系列ごとに名前・色・点マーカーの有無・grow アニメーションの
@@ -56,6 +62,10 @@ struct ChartOptions {
   // グリッド線
   bool showGrid = false;              ///< グリッド線を表示
   std::string gridColor = "";         ///< グリッド線の色（空文字=axisColor の半透明）
+  // グラフ種別
+  ChartType chartType = ChartType::Line;          ///< グラフの種類
+  BarAnimation barAnimation = BarAnimation::BottomToTop; ///< 棒グラフのアニメーション種別
+  double barWidthRatio = 0.8;          ///< 棒の幅（カテゴリ幅に対する比率, 0〜1）
   // 凡例・ラベル
   bool showLegend = false;            ///< 凡例を表示
   bool showXValues = false;           ///< 横軸の数値ラベルを表示

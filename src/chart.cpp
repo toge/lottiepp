@@ -303,8 +303,11 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
   double minY = std::get<1>(series[0].data[0]);
   double maxY = minY;
   for (const auto& s : series) {
-    if (s.data.size() < 2) {
-      throw std::invalid_argument("plot: each series needs >= 2 points");
+    if (s.data.empty()) {
+      throw std::invalid_argument("plot: each series needs >= 1 point");
+    }
+    if (opt.chartType == ChartType::Line && s.data.size() < 2) {
+      throw std::invalid_argument("plot: line chart needs >= 2 points per series");
     }
     for (const auto& d : s.data) {
       minY = std::min(minY, std::get<1>(d));
@@ -339,59 +342,114 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
   dp.op = op;
   dp.w = opt.width;
   dp.h = opt.height;
-  dp.name = "LineChart";
+  dp.name = (opt.chartType == ChartType::Bar) ? "BarChart" : "LineChart";
   auto doc = makeDocument(dp);
 
   // --- 各レイヤをあらかじめ計算しておく ---
   auto axesLayers = makeAxes(opt, x0, y0, spanX, spanY, op);
-
-  struct SerLayer { std::vector<double> xs; };
   std::vector<Layer> serLayers;
-  for (const auto& s : series) {
-    const std::size_t n = s.data.size();
-    std::vector<double> xs(n), ys(n);
-    for (std::size_t i = 0; i < n; ++i) {
-      xs[i] = (n == 1) ? x0 : x0 + (spanX * static_cast<double>(i)) / (n - 1);
-      ys[i] = mapY(std::get<1>(s.data[i]));
-    }
 
-    ShapeLayerParams p;
-    p.name = s.name;
-    p.from = 0.0;
-    p.to = op;
-    if (s.fillArea) {
-      p.items.push_back(makeAreaPath(xs, ys, y0));
-      p.items.push_back(makeFill(s.color, 20.0));
-    }
-    p.items.push_back(makePolyline(xs, ys));
-    {
-      auto stroke = makeStroke(s.color, 4.0, 100.0);
-      if (s.dashArray.size() >= 2) {
-        json arr = parseJson("[]");
-        arr.get_array().push_back(parseJson(
-            "{\"n\":\"d 0\",\"ty\":\"d\",\"v\":{\"a\":0,\"k\":" +
-            std::to_string(s.dashArray[0]) + "}}"));
-        arr.get_array().push_back(parseJson(
-            "{\"n\":\"g 0\",\"ty\":\"g\",\"v\":{\"a\":0,\"k\":" +
-            std::to_string(s.dashArray[1]) + "}}"));
-        if (s.dashArray.size() >= 3) {
-          arr.get_array().push_back(parseJson(
-              "{\"n\":\"o 0\",\"ty\":\"o\",\"v\":{\"a\":0,\"k\":" +
-              std::to_string(s.dashArray[2]) + "}}"));
-        }
-        stroke["d"] = arr;
+  if (opt.chartType == ChartType::Bar) {
+    // ---- 棒グラフ ----
+    const auto n = series[0].data.size();
+    const double catWidth = spanX / (n > 1 ? n - 1 : 1.0);
+    const double groupWidth = catWidth * opt.barWidthRatio;
+    const double barW = std::max(2.0, groupWidth / static_cast<double>(series.size()));
+    const double growDur = op * 0.6;
+    const double stagger = (n > 1) ? (op - growDur) / (n - 1) : 0.0;
+
+    for (std::size_t i = 0; i < n; ++i) {
+      const double cx = (n == 1) ? x0 : x0 + (spanX * i) / (n - 1);
+      for (std::size_t si = 0; si < series.size(); ++si) {
+        const auto& s = series[si];
+        const double val = std::get<1>(s.data[i]);
+        const double barH = y0 - mapY(val);
+        if (barH <= 0.0) continue;
+        const double bx = cx - groupWidth / 2.0 + (si + 0.5) * (groupWidth / series.size());
+
+        Layer l;
+        l.ty = 4;
+        l.nm = s.name + "_b" + std::to_string(i);
+        const double start = (opt.barAnimation == BarAnimation::LeftToRight) ? i * stagger : 0.0;
+        l.ip = start;
+        l.op = op;
+        l.st = start;
+
+        Transform ks;
+        ks.o = staticProp(100.0);
+        ks.r = staticProp(0.0);
+        ks.p = parseJson("{\"a\":0,\"k\":[" + std::to_string(bx) + "," + std::to_string(y0) + ",0]}");
+        ks.a = parseJson("{\"a\":0,\"k\":[0,0,0]}");
+        ks.s = parseJson(
+            "{\"a\":1,\"k\":["
+            "{\"i\":{\"x\":[0.4,0.4],\"y\":[1,1]},\"o\":{\"x\":[0.6,0.6],\"y\":[0,0]},\"t\":0,\"s\":[100,0]},"
+            "{\"t\":" + std::to_string(growDur) + ",\"s\":[100,100]}"
+            "]}");
+        l.ks = ks;
+
+        json group = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
+        group["it"].get_array().push_back(parseJson(
+            "{\"ty\":\"rc\",\"nm\":\"rect\",\"p\":{\"a\":0,\"k\":[0," +
+            std::to_string(-barH / 2.0) + "]},\"s\":{\"a\":0,\"k\":[" +
+            std::to_string(barW) + "," + std::to_string(barH) + "]},\"r\":{\"a\":0,\"k\":0}}"));
+        group["it"].get_array().push_back(makeFill(s.color, 100.0));
+        group["it"].get_array().push_back(parseJson(
+            "{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
+            "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},\"o\":{\"a\":0,\"k\":100}}"));
+        json shapes = parseJson("[]");
+        shapes.get_array().push_back(group);
+        l.shapes = shapes;
+        serLayers.push_back(l);
       }
-      p.items.push_back(std::move(stroke));
     }
-    if (s.grow) {
-      p.items.push_back(makeGrowingTrim(op));
-    }
-    if (s.showPoints) {
+  } else {
+    // ---- 折れ線グラフ ----
+    for (const auto& s : series) {
+      const std::size_t n = s.data.size();
+      std::vector<double> xs(n), ys(n);
       for (std::size_t i = 0; i < n; ++i) {
-        p.items.push_back(makeDotGroup(xs[i], ys[i], 8.0, s.color));
+        xs[i] = (n == 1) ? x0 : x0 + (spanX * static_cast<double>(i)) / (n - 1);
+        ys[i] = mapY(std::get<1>(s.data[i]));
       }
+
+      ShapeLayerParams p;
+      p.name = s.name;
+      p.from = 0.0;
+      p.to = op;
+      if (s.fillArea) {
+        p.items.push_back(makeAreaPath(xs, ys, y0));
+        p.items.push_back(makeFill(s.color, 20.0));
+      }
+      p.items.push_back(makePolyline(xs, ys));
+      {
+        auto stroke = makeStroke(s.color, 4.0, 100.0);
+        if (s.dashArray.size() >= 2) {
+          json arr = parseJson("[]");
+          arr.get_array().push_back(parseJson(
+              "{\"n\":\"d 0\",\"ty\":\"d\",\"v\":{\"a\":0,\"k\":" +
+              std::to_string(s.dashArray[0]) + "}}"));
+          arr.get_array().push_back(parseJson(
+              "{\"n\":\"g 0\",\"ty\":\"g\",\"v\":{\"a\":0,\"k\":" +
+              std::to_string(s.dashArray[1]) + "}}"));
+          if (s.dashArray.size() >= 3) {
+            arr.get_array().push_back(parseJson(
+                "{\"n\":\"o 0\",\"ty\":\"o\",\"v\":{\"a\":0,\"k\":" +
+                std::to_string(s.dashArray[2]) + "}}"));
+          }
+          stroke["d"] = arr;
+        }
+        p.items.push_back(std::move(stroke));
+      }
+      if (s.grow) {
+        p.items.push_back(makeGrowingTrim(op));
+      }
+      if (s.showPoints) {
+        for (std::size_t i = 0; i < n; ++i) {
+          p.items.push_back(makeDotGroup(xs[i], ys[i], 8.0, s.color));
+        }
+      }
+      serLayers.push_back(makeShapeLayer(p));
     }
-    serLayers.push_back(makeShapeLayer(p));
   }
 
   // 凡例テキスト＋色見本
