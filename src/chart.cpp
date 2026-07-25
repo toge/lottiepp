@@ -306,8 +306,8 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
     if (s.data.empty()) {
       throw std::invalid_argument("plot: each series needs >= 1 point");
     }
-    if (opt.chartType == ChartType::Line && s.data.size() < 2) {
-      throw std::invalid_argument("plot: line chart needs >= 2 points per series");
+    if (opt.chartType != ChartType::Bar && s.data.size() < 2) {
+      throw std::invalid_argument("plot: line/scatter chart needs >= 2 points per series");
     }
     for (const auto& d : s.data) {
       minY = std::min(minY, std::get<1>(d));
@@ -334,6 +334,24 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
     return y0 - norm * spanY;
   };
 
+  // X 範囲（散布図用）
+  double minX = NAN, maxX = NAN;
+  if (opt.chartType == ChartType::Scatter) {
+    minX = std::get<0>(series[0].data[0]);
+    maxX = minX;
+    for (const auto& s : series) {
+      for (const auto& d : s.data) {
+        const double xv = static_cast<double>(std::get<0>(d));
+        minX = std::min(minX, xv);
+        maxX = std::max(maxX, xv);
+      }
+    }
+    if (minX == maxX) maxX = minX + 1.0;
+  }
+  auto mapX = [&](double v) {
+    return x0 + (v - minX) / (maxX - minX) * spanX;
+  };
+
   const double op = opt.duration * opt.frameRate;
 
   // 空のドキュメントを生成
@@ -342,7 +360,8 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
   dp.op = op;
   dp.w = opt.width;
   dp.h = opt.height;
-  dp.name = (opt.chartType == ChartType::Bar) ? "BarChart" : "LineChart";
+  dp.name = (opt.chartType == ChartType::Bar) ? "BarChart" :
+            (opt.chartType == ChartType::Scatter) ? "ScatterChart" : "LineChart";
   auto doc = makeDocument(dp);
 
   // --- 各レイヤをあらかじめ計算しておく ---
@@ -401,6 +420,54 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
         l.shapes = shapes;
         serLayers.push_back(l);
       }
+    }
+  } else if (opt.chartType == ChartType::Scatter) {
+    // ---- 散布図（X 値を実データからマッピング） ----
+    for (const auto& s : series) {
+      const std::size_t n = s.data.size();
+      std::vector<double> xs(n), ys(n);
+      for (std::size_t i = 0; i < n; ++i) {
+        xs[i] = mapX(static_cast<double>(std::get<0>(s.data[i])));
+        ys[i] = mapY(std::get<1>(s.data[i]));
+      }
+
+      ShapeLayerParams p;
+      p.name = s.name;
+      p.from = 0.0;
+      p.to = op;
+      if (s.fillArea) {
+        p.items.push_back(makeAreaPath(xs, ys, y0));
+        p.items.push_back(makeFill(s.color, 20.0));
+      }
+      p.items.push_back(makePolyline(xs, ys));
+      {
+        auto stroke = makeStroke(s.color, 4.0, 100.0);
+        if (s.dashArray.size() >= 2) {
+          json arr = parseJson("[]");
+          arr.get_array().push_back(parseJson(
+              "{\"n\":\"d 0\",\"ty\":\"d\",\"v\":{\"a\":0,\"k\":" +
+              std::to_string(s.dashArray[0]) + "}}"));
+          arr.get_array().push_back(parseJson(
+              "{\"n\":\"g 0\",\"ty\":\"g\",\"v\":{\"a\":0,\"k\":" +
+              std::to_string(s.dashArray[1]) + "}}"));
+          if (s.dashArray.size() >= 3) {
+            arr.get_array().push_back(parseJson(
+                "{\"n\":\"o 0\",\"ty\":\"o\",\"v\":{\"a\":0,\"k\":" +
+                std::to_string(s.dashArray[2]) + "}}"));
+          }
+          stroke["d"] = arr;
+        }
+        p.items.push_back(std::move(stroke));
+      }
+      if (s.grow) {
+        p.items.push_back(makeGrowingTrim(op));
+      }
+      if (s.showPoints) {
+        for (std::size_t i = 0; i < n; ++i) {
+          p.items.push_back(makeDotGroup(xs[i], ys[i], 8.0, s.color));
+        }
+      }
+      serLayers.push_back(makeShapeLayer(p));
     }
   } else {
     // ---- 折れ線グラフ ----
@@ -479,7 +546,9 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
     const auto& first = series[0];
     const auto n = first.data.size();
     for (std::size_t i = 0; i < n; ++i) {
-      const double px = (n == 1) ? x0 : x0 + (spanX * static_cast<double>(i)) / (n - 1);
+      const double px = (opt.chartType == ChartType::Scatter)
+        ? mapX(static_cast<double>(std::get<0>(first.data[i])))
+        : ((n == 1) ? x0 : x0 + (spanX * static_cast<double>(i)) / (n - 1));
       xlabelLayers.push_back(makeTextLayer(
           std::to_string(std::get<0>(first.data[i])),
           px, y0 + 20.0, 12.0, opt.axisColor, op, "XLabel" + std::to_string(i)));

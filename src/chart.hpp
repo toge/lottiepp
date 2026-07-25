@@ -22,7 +22,7 @@ namespace lottiepp::chart {
 using Point = std::tuple<int, double>;
 
 /** @brief グラフ種別 */
-enum class ChartType { Line, Bar };
+enum class ChartType { Line, Bar, Scatter };
 
 /** @brief 棒グラフのアニメーション種別 */
 enum class BarAnimation { BottomToTop, LeftToRight };
