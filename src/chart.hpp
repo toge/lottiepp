@@ -13,13 +13,15 @@
 
 #include <cmath>
 #include <string>
-#include <tuple>
 #include <vector>
 
 namespace lottiepp::chart {
 
 /** @brief グラフ上の 1 点を表す型 */
-using Point = std::tuple<int, double>;
+struct Point {
+  int    x{};
+  double y{};
+};
 
 /** @brief グラフ種別 */
 enum class ChartType { Line, Bar, Scatter };

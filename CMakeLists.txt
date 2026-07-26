@@ -3,7 +3,6 @@ project(lottiepp VERSION 0.1.0 LANGUAGES C CXX)
 
 option(BUILD_TEST "Enable tests" ON)
 option(BUILD_CLI "Build lottieproc CLI" ON)
-option(ENABLE_CHART "Build chart/plot sample + helper" ON)
 
 set(STD_CPP cxx_std_23)
 
@@ -85,19 +84,13 @@ elseif(BUILD_TEST AND NOT Catch2_FOUND)
     message(STATUS "Catch2 not found; tests disabled")
 endif()
 
-# --- chart/plot helper (ENABLE_CHART=ON) ---
-if(ENABLE_CHART)
-    # プロット機能を lottiepp ライブラリに統合してビルドする
-    target_sources(lottiepp PRIVATE src/chart.cpp)
+# --- chart/plot helper ---
+target_sources(lottiepp PRIVATE src/chart.cpp)
 
-
-    target_include_directories(lottiepp PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
-
-    # サンプル実行ファイル
-    add_executable(line_chart_grow samples/line_chart_grow.cpp)
-    target_link_libraries(line_chart_grow PRIVATE lottiepp)
-    target_compile_features(line_chart_grow PRIVATE ${STD_CPP})
-endif()
+# サンプル実行ファイル
+add_executable(line_chart_grow samples/line_chart_grow.cpp)
+target_link_libraries(line_chart_grow PRIVATE lottiepp)
+target_compile_features(line_chart_grow PRIVATE ${STD_CPP})
 
 # ---------------------------------------------------------------------------
 # Install + CMake package config
@@ -115,7 +108,7 @@ install(TARGETS lottiepp
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(FILES src/lottiepp.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES src/lottiepp.hpp src/chart.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(BUILD_CLI)
     install(TARGETS lottieproc
@@ -147,21 +140,4 @@ install(FILES
     DESTINATION ${LOTTIPP_INSTALL_CMAKEDIR}
 )
 
-# ---------------------------------------------------------------------------
-# CPack installer
-# ---------------------------------------------------------------------------
-set(CPACK_PACKAGE_NAME lottiepp)
-set(CPACK_PACKAGE_VENDOR "lottiepp")
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Lottie (.json/.lottie) editing library and CLI")
-set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
-set(CPACK_VERBATIM_VARIABLES ON)
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    set(CPACK_GENERATOR NSIS)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(CPACK_GENERATOR productbuild)
-else()
-    set(CPACK_GENERATOR DEB)
-    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
-endif()
-include(CPack)
+

@@ -190,21 +190,7 @@ struct Document {
   };
 };
 
-/**
- * @brief .lottie パッケージ内のアニメーションエントリを表す構造体
- */
-struct AnimationEntry {
-  std::string id = "data";  // アニメーション識別子（デフォルトは "data"）
-};
 
-/**
- * @brief .lottie パッケージのマニフェストを表す構造体（完全に型付け済み）
- */
-struct Manifest {
-  std::string                 version   = "1";         // マニフェストバージョン
-  std::string                 generator = "lottieproc"; // 生成ツール名
-  std::vector<AnimationEntry> animations{};             // アニメーションエントリ群
-};
 
 // --- 新規要素・エフェクト追加用ヘルパ ---
 
@@ -264,7 +250,7 @@ json makeStroke(std::string_view hex, double width, double opacity = 100.0);
  * @param simultaneous true=全パスを同時にトリム, false=各パスを個別にトリム
  * @return シェイプ修飾アイテムを表す json ノード
  */
-json makeTrimPath(double startPct, double endPct, double offsetDeg = 0.0, bool simultaneous = true);
+
 
 /**
  * @brief シェイプレイヤ生成時のパラメータ

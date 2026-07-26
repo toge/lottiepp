@@ -16,6 +16,18 @@
 namespace lottiepp {
 namespace {
 
+template<typename Fn>
+void forEachLayer(Document& doc, Fn&& fn) {
+  for (auto& l : doc.layers) fn(l);
+  if (doc.assets) {
+    for (auto& a : *doc.assets) {
+      if (a.layers) {
+        for (auto& l : *a.layers) fn(l);
+      }
+    }
+  }
+}
+
 // 読み込み時のオプション：未知キーをエラーにせず、null メンバは読み飛ばす
 constexpr glz::opts kReadOpts{.error_on_unknown_keys = false, .skip_null_members = true};
 // 書き出し時のオプション：プリティ化は行わず、上記と同様の未知キー扱いとする
@@ -250,13 +262,22 @@ std::size_t recolorRecursive(json& node, const std::optional<Rgb>& from, const R
     }
     // グラデーション（線形/放射）の場合：g 内のストップカラーを置換
     if ((ty == "gf" || ty == "gs") && node.contains("g") && node["g"].is_object()) {
+      json& g = node["g"];
+      // p が存在すればその値で停止数を制限（アルファ停止の読み越し防止）
+      const std::size_t pStops = [&]() -> std::size_t {
+        if (g.contains("p") && g["p"].is_number()) {
+          return static_cast<std::size_t>(g["p"].as<int>());
+        }
+        return 0;
+      }();
       // グラデーションのストップ列を置換するラムダ（4 要素ごとに [位置, r, g, b] が並ぶ）
       auto recolorStops = [&](json& stops) {
         if (!stops.is_array()) {
           return;
         }
         auto& a = stops.get_array();
-        for (std::size_t i = 0; i + 3 < a.size(); i += 4) {
+        const std::size_t max = pStops > 0 ? std::min(pStops * 4, a.size()) : a.size();
+        for (std::size_t i = 0; i + 3 < max; i += 4) {
           if (!a[i].is_number() || !a[i + 1].is_number() || !a[i + 2].is_number() || !a[i + 3].is_number()) {
             return;
           }
@@ -269,7 +290,6 @@ std::size_t recolorRecursive(json& node, const std::optional<Rgb>& from, const R
           }
         }
       };
-      json& g = node["g"];
       if (g.contains("k")) {
         if (g["k"].is_array()) {
           recolorStops(g["k"]);
@@ -472,16 +492,22 @@ bool replaceTextInLayer(Layer& layer, std::string_view layerName, std::string_vi
   if (!layer.nm || *layer.nm != layerName) {
     return false;
   }
-  if (!layer.t || !layer.t->d || !layer.t->d->k || !layer.t->d->k->is_array()) {
+  if (!layer.t || !layer.t->d || !layer.t->d->k) {
     return false;
   }
   json& k = *layer.t->d->k;
+  if (!k.is_array()) {
+    if (k.is_object() && k.contains("t") && k["t"].is_string()) {
+      k["t"] = std::string(newText);
+      return true;
+    }
+    return false;
+  }
   bool found = false;
   for (auto& kf : k.get_array()) {
     if (!kf.is_object()) {
       continue;
     }
-    // キーフレーム内のテキスト s.t を置換
     if (kf.contains("s") && kf["s"].is_object() && kf["s"].contains("t")) {
       kf["s"]["t"] = std::string(newText);
       found        = true;
@@ -553,17 +579,9 @@ std::string extractAnimationFromZip(const std::string& path) {
 void writeLottieZip(const Document& doc, const std::string& path) {
   const std::string animation = dumpPretty(doc);
 
-  // マニフェストを組み立ててシリアライズ（整形）する
-  Manifest manifest;
-  manifest.animations.push_back(AnimationEntry{.id = "data"});
-  std::string manifestStr;
-  {
-    const auto ec = glz::write<kWriteOpts>(manifest, manifestStr);
-    if (ec) {
-      throw std::runtime_error("failed to serialize manifest");
-    }
-    manifestStr = glz::prettify_json(manifestStr);
-  }
+  std::string manifestStr =
+      "{\"version\":\"1\",\"generator\":\"lottieproc\",\"animations\":[{\"id\":\"data\"}]}";
+  manifestStr = glz::prettify_json(manifestStr);
 
   mz_zip_archive zip{};
   if (!mz_zip_writer_init_file(&zip, path.c_str(), 0)) {
@@ -715,27 +733,6 @@ json makeStroke(std::string_view hex, double width, double opacity) {
   n["c"] = staticProp("[" + std::to_string(c->r) + "," + std::to_string(c->g) + "," +
                       std::to_string(c->b) + "," + std::to_string(c->a) + "]");
   return n;
-}
-
-/**
- * @brief トリムパス修飾（ty="tm"）を生成する
- * @param startPct 開始位置（0～100、パーセント）
- * @param endPct 終了位置（0～100、パーセント）
- * @param offsetDeg オフセット（度）
- * @param simultaneous true=全パスを同時にトリム, false=各パスを個別にトリム
- * @return シェイプ修飾アイテムを表す json ノード
- */
-json makeTrimPath(double startPct, double endPct, double offsetDeg, bool simultaneous) {
-  assert(std::isfinite(startPct) && std::isfinite(endPct) && std::isfinite(offsetDeg) &&
-         "makeTrimPath: startPct/endPct/offsetDeg must be finite");
-  // m はトリムモード（1=同時, 2=個別）。AE の trim multiple shapes に対応。
-  const int m = simultaneous ? 1 : 2;
-  return parseJson(
-      "{\"ty\":\"tm\","
-      "\"s\":{\"a\":0,\"k\":" + std::to_string(startPct) + "},"
-      "\"e\":{\"a\":0,\"k\":" + std::to_string(endPct) + "},"
-      "\"o\":{\"a\":0,\"k\":" + std::to_string(offsetDeg) + "},"
-      "\"m\":" + std::to_string(m) + "}");
 }
 
 /**
@@ -1116,18 +1113,9 @@ std::size_t recolor(Document& doc, std::string_view fromHex, std::string_view to
   }
 
   std::size_t count = 0;
-  // トップレベルのレイヤ群を走査
-  for (auto& layer : doc.layers) {
-    count += recolorLayer(layer, from, *to);
-  }
-  // アセット内のプリコンポジションも走査
+  forEachLayer(doc, [&](Layer& l) { count += recolorLayer(l, from, *to); });
   if (doc.assets) {
     for (auto& asset : *doc.assets) {
-      if (asset.layers) {
-        for (auto& layer : *asset.layers) {
-          count += recolorLayer(layer, from, *to);
-        }
-      }
       count += recolorExtras(asset.extra, from, *to);
     }
   }
@@ -1144,19 +1132,7 @@ std::size_t recolor(Document& doc, std::string_view fromHex, std::string_view to
  */
 bool replaceText(Document& doc, std::string_view layerName, std::string_view newText) {
   bool found = false;
-  for (auto& layer : doc.layers) {
-    found = replaceTextInLayer(layer, layerName, newText) || found;
-  }
-  if (doc.assets) {
-    for (auto& asset : *doc.assets) {
-      if (!asset.layers) {
-        continue;
-      }
-      for (auto& layer : *asset.layers) {
-        found = replaceTextInLayer(layer, layerName, newText) || found;
-      }
-    }
-  }
+  forEachLayer(doc, [&](Layer& l) { found = replaceTextInLayer(l, layerName, newText) || found; });
   return found;
 }
 
@@ -1173,16 +1149,9 @@ std::size_t setSpeed(Document& doc, double factor) {
   std::size_t count = 0;
   scaleOptional(doc.ip, factor, count);
   scaleOptional(doc.op, factor, count);
-  for (auto& layer : doc.layers) {
-    count += scaleLayer(layer, factor);
-  }
+  forEachLayer(doc, [&](Layer& l) { count += scaleLayer(l, factor); });
   if (doc.assets) {
     for (auto& asset : *doc.assets) {
-      if (asset.layers) {
-        for (auto& layer : *asset.layers) {
-          count += scaleLayer(layer, factor);
-        }
-      }
       count += scaleExtras(asset.extra, factor);
     }
   }

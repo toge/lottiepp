@@ -57,6 +57,25 @@ json makeEllipseShape(double cx, double cy, double size) {
 }
 
 /**
+ * @brief JSON 文字列をエスケープする
+ */
+std::string jsonEscape(std::string_view s) {
+  std::string out;
+  out.reserve(s.size() + 2);
+  for (char c : s) {
+    switch (c) {
+      case '"':  out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n";  break;
+      case '\r': out += "\\r";  break;
+      case '\t': out += "\\t";  break;
+      default:   out += c;
+    }
+  }
+  return out;
+}
+
+/**
  * @brief 点マーカー（円＋塗り）をグループ化する
  * @details el+fl を 1 つの gr にまとめないと、flat な fl が
  *          グループ内の先行シェイプ（ポリライン）を塗りつぶしてしまう。
@@ -110,7 +129,7 @@ Layer makeTextLayer(std::string_view text, double x, double y, double size,
 
   json doc = parseJson(
       "{\"s\":{\"s\":" + std::to_string(size) +
-      ",\"f\":\"sans\",\"t\":\"" + std::string(text) +
+      ",\"f\":\"sans\",\"t\":\"" + jsonEscape(text) +
       "\",\"fc\":" + col +
       ",\"j\":2,\"tr\":0,\"lh\":" + std::to_string(size * 1.2) +
       ",\"ls\":0,\"fc\":" + col + "}}");
@@ -185,6 +204,60 @@ json makeGrowingTrim(double op) {
                    "},"
                    "\"o\":{\"a\":0,\"k\":0},"
                    "\"m\":1}");
+}
+
+/**
+ * @brief ダッシュ配列付きストロークを生成する
+ */
+json makeDashStroke(const Series& s) {
+  auto stroke = makeStroke(s.color, 4.0, 100.0);
+  if (s.dashArray.size() >= 2) {
+    json arr = parseJson("[]");
+    arr.get_array().push_back(parseJson(
+        "{\"n\":\"d 0\",\"ty\":\"d\",\"v\":{\"a\":0,\"k\":" +
+        std::to_string(s.dashArray[0]) + "}}"));
+    arr.get_array().push_back(parseJson(
+        "{\"n\":\"g 0\",\"ty\":\"g\",\"v\":{\"a\":0,\"k\":" +
+        std::to_string(s.dashArray[1]) + "}}"));
+    if (s.dashArray.size() >= 3) {
+      arr.get_array().push_back(parseJson(
+          "{\"n\":\"o 0\",\"ty\":\"o\",\"v\":{\"a\":0,\"k\":" +
+          std::to_string(s.dashArray[2]) + "}}"));
+    }
+    stroke["d"] = arr;
+  }
+  return stroke;
+}
+
+/**
+ * @brief 棒グラフの矩形グループを生成する
+ */
+json makeBarGroup(double barW, double barH, double offX, double offY,
+                   const std::string& color) {
+  json group = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
+  group["it"].get_array().push_back(
+      parseJson("{\"ty\":\"rc\",\"nm\":\"rect\",\"p\":{\"a\":0,\"k\":[" +
+                std::to_string(offX) + "," + std::to_string(offY) +
+                "]},\"s\":{\"a\":0,\"k\":[" + std::to_string(barW) + "," +
+                std::to_string(barH) + "]},\"r\":{\"a\":0,\"k\":0}}"));
+  group["it"].get_array().push_back(makeFill(color, 100.0));
+  group["it"].get_array().push_back(parseJson(
+      "{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
+      "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},\"o\":{\"a\":0,\"k\":100}}"));
+  return group;
+}
+
+/**
+ * @brief 棒グラフの伸長アニメーション JSON を生成する
+ */
+json makeBarScaleAnim(double growDur, double s0x, double s0y, double s1x, double s1y) {
+  return parseJson(
+      "{\"a\":1,\"k\":["
+      "{\"i\":{\"x\":[0.4,0.4],\"y\":[1,1]},\"o\":{\"x\":[0.6,0.6],\"y\":[0,0]},\"t\":0,\"s\":[" +
+      std::to_string(s0x) + "," + std::to_string(s0y) + "]}," +
+      "{\"t\":" + std::to_string(growDur) + ",\"s\":[" +
+      std::to_string(s1x) + "," + std::to_string(s1y) + "]}"
+      "]}");
 }
 
 /**
@@ -312,8 +385,6 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
   }
 
   // 全系列から Y の最小値・最大値を決定し、正規化の範囲とする
-  double minY = std::get<1>(series[0].data[0]);
-  double maxY = minY;
   for (const auto& s : series) {
     if (s.data.empty()) {
       throw std::invalid_argument("plot: each series needs >= 1 point");
@@ -321,9 +392,13 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
     if (opt.chartType != ChartType::Bar && s.data.size() < 2) {
       throw std::invalid_argument("plot: line/scatter chart needs >= 2 points per series");
     }
+  }
+  double minY = series[0].data[0].y;
+  double maxY = minY;
+  for (const auto& s : series) {
     for (const auto& d : s.data) {
-      minY = std::min(minY, std::get<1>(d));
-      maxY = std::max(maxY, std::get<1>(d));
+      minY = std::min(minY, d.y);
+      maxY = std::max(maxY, d.y);
     }
   }
   if (minY == maxY) {
@@ -349,11 +424,11 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
   // X 範囲（散布図用）
   double minX = NAN, maxX = NAN;
   if (opt.chartType == ChartType::Scatter) {
-    minX = std::get<0>(series[0].data[0]);
+    minX = static_cast<double>(series[0].data[0].x);
     maxX = minX;
     for (const auto& s : series) {
       for (const auto& d : s.data) {
-        const double xv = static_cast<double>(std::get<0>(d));
+        const double xv = static_cast<double>(d.x);
         minX = std::min(minX, xv);
         maxX = std::max(maxX, xv);
       }
@@ -395,7 +470,7 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
         const double cy = (n == 1) ? y0 : y0 - (spanY * i) / (n - 1);
         for (std::size_t si = 0; si < series.size(); ++si) {
           const auto& s = series[si];
-          const double val = std::get<1>(s.data[i]);
+          const double val = s.data[i].y;
           const double barW = (val - minY) / (maxY - minY) * spanX;
           if (barW <= 0.0) continue;
           const double by = cy - groupHeight / 2.0 + (si + 0.5) * (groupHeight / series.size());
@@ -413,22 +488,10 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
           ks.r = staticProp(0.0);
           ks.p = parseJson("{\"a\":0,\"k\":[" + std::to_string(x0) + "," + std::to_string(by) + ",0]}");
           ks.a = parseJson("{\"a\":0,\"k\":[0,0,0]}");
-          ks.s = parseJson(
-              "{\"a\":1,\"k\":["
-              "{\"i\":{\"x\":[0.4,0.4],\"y\":[1,1]},\"o\":{\"x\":[0.6,0.6],\"y\":[0,0]},\"t\":0,\"s\":[0,100]},"
-              "{\"t\":" + std::to_string(growDur) + ",\"s\":[100,100]}"
-              "]}");
+          ks.s = makeBarScaleAnim(growDur, 0, 100, 100, 100);
           l.ks = ks;
 
-          json group = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
-          group["it"].get_array().push_back(parseJson(
-              "{\"ty\":\"rc\",\"nm\":\"rect\",\"p\":{\"a\":0,\"k\":[" +
-              std::to_string(barW / 2.0) + ",0]},\"s\":{\"a\":0,\"k\":[" +
-              std::to_string(barW) + "," + std::to_string(barH) + "]},\"r\":{\"a\":0,\"k\":0}}"));
-          group["it"].get_array().push_back(makeFill(s.color, 100.0));
-          group["it"].get_array().push_back(parseJson(
-              "{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
-              "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},\"o\":{\"a\":0,\"k\":100}}"));
+          json group = makeBarGroup(barW, barH, barW / 2.0, 0, s.color);
           json shapes = parseJson("[]");
           shapes.get_array().push_back(group);
           l.shapes = shapes;
@@ -448,7 +511,7 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
         const double cx = (n == 1) ? x0 : x0 + (spanX * i) / (n - 1);
         for (std::size_t si = 0; si < series.size(); ++si) {
           const auto& s = series[si];
-          const double val = std::get<1>(s.data[i]);
+          const double val = s.data[i].y;
           const double barH = y0 - mapY(val);
           if (barH <= 0.0) continue;
           const double bx = cx - groupWidth / 2.0 + (si + 0.5) * (groupWidth / series.size());
@@ -466,22 +529,10 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
           ks.r = staticProp(0.0);
           ks.p = parseJson("{\"a\":0,\"k\":[" + std::to_string(bx) + "," + std::to_string(y0) + ",0]}");
           ks.a = parseJson("{\"a\":0,\"k\":[0,0,0]}");
-          ks.s = parseJson(
-              "{\"a\":1,\"k\":["
-              "{\"i\":{\"x\":[0.4,0.4],\"y\":[1,1]},\"o\":{\"x\":[0.6,0.6],\"y\":[0,0]},\"t\":0,\"s\":[100,0]},"
-              "{\"t\":" + std::to_string(growDur) + ",\"s\":[100,100]}"
-              "]}");
+          ks.s = makeBarScaleAnim(growDur, 100, 0, 100, 100);
           l.ks = ks;
 
-          json group = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
-          group["it"].get_array().push_back(parseJson(
-              "{\"ty\":\"rc\",\"nm\":\"rect\",\"p\":{\"a\":0,\"k\":[0," +
-              std::to_string(-barH / 2.0) + "]},\"s\":{\"a\":0,\"k\":[" +
-              std::to_string(barW) + "," + std::to_string(barH) + "]},\"r\":{\"a\":0,\"k\":0}}"));
-          group["it"].get_array().push_back(makeFill(s.color, 100.0));
-          group["it"].get_array().push_back(parseJson(
-              "{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
-              "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},\"o\":{\"a\":0,\"k\":100}}"));
+          json group = makeBarGroup(barW, barH, 0, -barH / 2.0, s.color);
           json shapes = parseJson("[]");
           shapes.get_array().push_back(group);
           l.shapes = shapes;
@@ -495,8 +546,8 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
       const std::size_t n = s.data.size();
       std::vector<double> xs(n), ys(n);
       for (std::size_t i = 0; i < n; ++i) {
-        xs[i] = mapX(static_cast<double>(std::get<0>(s.data[i])));
-        ys[i] = mapY(std::get<1>(s.data[i]));
+        xs[i] = mapX(static_cast<double>(s.data[i].x));
+        ys[i] = mapY(s.data[i].y);
       }
 
       ShapeLayerParams p;
@@ -508,25 +559,7 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
         p.items.push_back(makeFill(s.color, 20.0));
       }
       p.items.push_back(makePolyline(xs, ys));
-      {
-        auto stroke = makeStroke(s.color, 4.0, 100.0);
-        if (s.dashArray.size() >= 2) {
-          json arr = parseJson("[]");
-          arr.get_array().push_back(parseJson(
-              "{\"n\":\"d 0\",\"ty\":\"d\",\"v\":{\"a\":0,\"k\":" +
-              std::to_string(s.dashArray[0]) + "}}"));
-          arr.get_array().push_back(parseJson(
-              "{\"n\":\"g 0\",\"ty\":\"g\",\"v\":{\"a\":0,\"k\":" +
-              std::to_string(s.dashArray[1]) + "}}"));
-          if (s.dashArray.size() >= 3) {
-            arr.get_array().push_back(parseJson(
-                "{\"n\":\"o 0\",\"ty\":\"o\",\"v\":{\"a\":0,\"k\":" +
-                std::to_string(s.dashArray[2]) + "}}"));
-          }
-          stroke["d"] = arr;
-        }
-        p.items.push_back(std::move(stroke));
-      }
+      p.items.push_back(makeDashStroke(s));
       if (s.grow) {
         p.items.push_back(makeGrowingTrim(op));
       }
@@ -544,7 +577,7 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
       std::vector<double> xs(n), ys(n);
       for (std::size_t i = 0; i < n; ++i) {
         xs[i] = (n == 1) ? x0 : x0 + (spanX * static_cast<double>(i)) / (n - 1);
-        ys[i] = mapY(std::get<1>(s.data[i]));
+        ys[i] = mapY(s.data[i].y);
       }
 
       ShapeLayerParams p;
@@ -556,25 +589,7 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
         p.items.push_back(makeFill(s.color, 20.0));
       }
       p.items.push_back(makePolyline(xs, ys));
-      {
-        auto stroke = makeStroke(s.color, 4.0, 100.0);
-        if (s.dashArray.size() >= 2) {
-          json arr = parseJson("[]");
-          arr.get_array().push_back(parseJson(
-              "{\"n\":\"d 0\",\"ty\":\"d\",\"v\":{\"a\":0,\"k\":" +
-              std::to_string(s.dashArray[0]) + "}}"));
-          arr.get_array().push_back(parseJson(
-              "{\"n\":\"g 0\",\"ty\":\"g\",\"v\":{\"a\":0,\"k\":" +
-              std::to_string(s.dashArray[1]) + "}}"));
-          if (s.dashArray.size() >= 3) {
-            arr.get_array().push_back(parseJson(
-                "{\"n\":\"o 0\",\"ty\":\"o\",\"v\":{\"a\":0,\"k\":" +
-                std::to_string(s.dashArray[2]) + "}}"));
-          }
-          stroke["d"] = arr;
-        }
-        p.items.push_back(std::move(stroke));
-      }
+      p.items.push_back(makeDashStroke(s));
       if (s.grow) {
         p.items.push_back(makeGrowingTrim(op));
       }
@@ -617,16 +632,16 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
       for (std::size_t i = 0; i < n; ++i) {
         const double cy = (n == 1) ? y0 : y0 - (spanY * i) / (n - 1);
         xlabelLayers.push_back(makeTextLayer(
-            std::to_string(std::get<0>(first.data[i])),
+            std::to_string(first.data[i].x),
             x0 - 6.0, cy - 6.0, 12.0, opt.axisColor, op, "YLabel" + std::to_string(i)));
       }
     } else {
       for (std::size_t i = 0; i < n; ++i) {
         const double px = (opt.chartType == ChartType::Scatter)
-          ? mapX(static_cast<double>(std::get<0>(first.data[i])))
+          ? mapX(static_cast<double>(first.data[i].x))
           : ((n == 1) ? x0 : x0 + (spanX * static_cast<double>(i)) / (n - 1));
         xlabelLayers.push_back(makeTextLayer(
-            std::to_string(std::get<0>(first.data[i])),
+            std::to_string(first.data[i].x),
             px, y0 + 20.0, 12.0, opt.axisColor, op, "XLabel" + std::to_string(i)));
       }
     }

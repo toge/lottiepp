@@ -189,14 +189,6 @@ TEST_CASE("removeLayer removes by name") {
   REQUIRE_FALSE(lottiepp::removeLayer(again, "Missing"));
 }
 
-TEST_CASE("makeTrimPath builds tm") {
-  auto tm = lottiepp::makeTrimPath(25, 75, 0, true);
-  REQUIRE(tm["ty"].as<std::string>() == "tm");
-  REQUIRE(tm["m"].as<int>() == 1);
-  REQUIRE(tm["s"]["k"].as<double>() == Catch::Approx(25.0));
-  REQUIRE(tm["e"]["k"].as<double>() == Catch::Approx(75.0));
-}
-
 TEST_CASE("makeDocument creates empty valid doc") {
   auto doc = lottiepp::makeDocument();
   REQUIRE(doc.layers.empty());

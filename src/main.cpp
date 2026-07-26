@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -128,8 +129,7 @@ int main(int argc, char** argv) {
   std::string recolorFrom;
   std::string textLayer;
   std::string textValue;
-  double      speed      = 0.0;  // 速度倍率の一時保持用
-  bool        hasSpeed   = false; // --speed が指定されたかどうか
+  std::optional<double> speed;
   int         variations = 0;     // 生成するバリエーション数（0=なし）
   std::vector<PendingShape>  pendingShapes;   // 追加するシェイプレイヤ群
   std::vector<PendingEffect> pendingEffects;  // 追加するエフェクト群
@@ -164,8 +164,7 @@ int main(int argc, char** argv) {
         textValue = argv[++i];
       } else if (arg == "--speed") {
         need(1);
-        speed    = std::stod(argv[++i]);
-        hasSpeed = true;
+        speed = std::stod(argv[++i]);
       } else if (arg == "--variations") {
         need(1);
         variations = std::stoi(argv[++i]);
@@ -274,8 +273,8 @@ int main(int argc, char** argv) {
       base.text_layer = textLayer;
       base.text_value = textValue;
     }
-    if (hasSpeed) {
-      base.speed = speed;
+    if (speed) {
+      base.speed = *speed;
     }
 
     // --variations が指定された場合は、複数のバリエーションを生成して出力する
@@ -283,8 +282,6 @@ int main(int argc, char** argv) {
       const auto sets = makeDefaultVariations(variations, base);
       const auto docs = lottiepp::generateVariations(doc, sets);
       for (std::size_t i = 0; i < docs.size(); ++i) {
-        // ラウンドトリップでシリアライズ/パースが通ることを確認（戻り値は利用しない）
-        (void)lottiepp::parse(lottiepp::dump(docs[i]));
         const std::string path = stemWithIndex(output, static_cast<int>(i + 1));
         lottiepp::save(docs[i], path);
         std::cout << "wrote " << path << "\n";
@@ -310,9 +307,6 @@ int main(int argc, char** argv) {
       const bool ok = lottiepp::removeLayer(doc, name);
       std::cout << "removeLayer " << name << ": " << (ok ? "ok" : "not found") << "\n";
     }
-
-    // ラウンドトリップ検証
-    (void)lottiepp::parse(lottiepp::dump(doc));
 
     lottiepp::save(doc, output);
     std::cout << "wrote " << output << "\n";
