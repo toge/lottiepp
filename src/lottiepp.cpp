@@ -5,6 +5,7 @@
 #include <glaze/exceptions/json_exceptions.hpp>
 #include <glaze/json/prettify.hpp>
 
+#include <cassert>
 #include <cmath>
 #include <algorithm>
 #include <fstream>
@@ -592,6 +593,7 @@ void writeLottieZip(const Document& doc, const std::string& path) {
  * @return {"a":0,"k":<v>} の形の json ノード
  */
 json staticProp(double v) {
+  assert(std::isfinite(v) && "staticProp: value must be finite (not NaN/Inf)");
   // 静的プロパティ（a=0）の定型を組み立てる
   return parseJson("{\"a\":0,\"k\":" + std::to_string(v) + "}");
 }
@@ -614,13 +616,14 @@ json staticProp(std::string_view arr) {
  */
 json makeShapeTransform() {
   // p=位置, a=アンカー, s=スケール(%), r=回転(度), o=不透明度(%)
-  return parseJson(
+  static const json kTransform = parseJson(
       "{\"ty\":\"tr\","
       "\"p\":{\"a\":0,\"k\":[0,0]},"
       "\"a\":{\"a\":0,\"k\":[0,0]},"
       "\"s\":{\"a\":0,\"k\":[100,100]},"
       "\"r\":{\"a\":0,\"k\":0},"
       "\"o\":{\"a\":0,\"k\":100}}");
+  return kTransform;
 }
 
 /**
@@ -631,10 +634,13 @@ json makeShapeTransform() {
  * @return シェイプアイテムを表す json ノード
  */
 json makeRect(double w, double h, double round) {
+  assert(std::isfinite(w) && std::isfinite(h) && std::isfinite(round) &&
+         "makeRect: w/h/round must be finite");
   // d=1 は描画方向（順方向）を示す既定値
-  json n = parseJson(
+  static const json kBase = parseJson(
       "{\"ty\":\"rc\",\"d\":1,"
       "\"s\":{\"a\":0,\"k\":[0,0]},\"p\":{\"a\":0,\"k\":[0,0]},\"r\":{\"a\":0,\"k\":0}}");
+  json n = kBase;
   // サイズと角丸め半径を指定値で上書きする
   n["s"] = staticProp("[" + std::to_string(w) + "," + std::to_string(h) + "]");
   n["r"] = staticProp(round);
@@ -648,10 +654,12 @@ json makeRect(double w, double h, double round) {
  * @return シェイプアイテムを表す json ノード
  */
 json makeEllipse(double w, double h) {
+  assert(std::isfinite(w) && std::isfinite(h) && "makeEllipse: w/h must be finite");
   // d=1 は描画方向（順方向）を示す既定値
-  json n = parseJson(
+  static const json kBase = parseJson(
       "{\"ty\":\"el\",\"d\":1,"
       "\"s\":{\"a\":0,\"k\":[0,0]},\"p\":{\"a\":0,\"k\":[0,0]}}");
+  json n = kBase;
   // サイズを指定値で上書きする
   n["s"] = staticProp("[" + std::to_string(w) + "," + std::to_string(h) + "]");
   return n;
@@ -664,14 +672,16 @@ json makeEllipse(double w, double h) {
  * @return シェイプアイテムを表す json ノード
  */
 json makeFill(std::string_view hex, double opacity) {
+  assert(std::isfinite(opacity) && "makeFill: opacity must be finite");
   const auto c = parseHexColor(hex);
   if (!c) {
     throw std::invalid_argument("invalid color: " + std::string(hex));
   }
   // r=1 は塗りつぶしルール（nonzero）、bm=0 はブレンドモード（通常）の既定値
-  json n = parseJson(
+  static const json kBase = parseJson(
       "{\"ty\":\"fl\",\"r\":1,\"bm\":0,"
       "\"o\":{\"a\":0,\"k\":0},\"c\":{\"a\":0,\"k\":[0,0,0,1]}}");
+  json n = kBase;
   // 不透明度と色（RGBA、各成分 0.0～1.0）を指定値で上書きする
   n["o"] = staticProp(opacity);
   n["c"] = staticProp("[" + std::to_string(c->r) + "," + std::to_string(c->g) + "," +
@@ -687,15 +697,18 @@ json makeFill(std::string_view hex, double opacity) {
  * @return シェイプアイテムを表す json ノード
  */
 json makeStroke(std::string_view hex, double width, double opacity) {
+  assert(std::isfinite(width) && std::isfinite(opacity) &&
+         "makeStroke: width/opacity must be finite");
   const auto c = parseHexColor(hex);
   if (!c) {
     throw std::invalid_argument("invalid color: " + std::string(hex));
   }
   // r=1: 塗りつぶしルール, bm=0: ブレンドモード(通常)
   // lc=2: 線端をラウンド, lj=2: 線結合をラウンド, ml=4: マイター限界値(既定)
-  json n = parseJson(
+  static const json kBase = parseJson(
       "{\"ty\":\"st\",\"r\":1,\"bm\":0,\"lc\":2,\"lj\":2,\"ml\":4,"
       "\"o\":{\"a\":0,\"k\":0},\"w\":{\"a\":0,\"k\":0},\"c\":{\"a\":0,\"k\":[0,0,0,1]}}");
+  json n = kBase;
   // 不透明度・線幅・色を指定値で上書きする
   n["o"] = staticProp(opacity);
   n["w"] = staticProp(width);
@@ -713,6 +726,8 @@ json makeStroke(std::string_view hex, double width, double opacity) {
  * @return シェイプ修飾アイテムを表す json ノード
  */
 json makeTrimPath(double startPct, double endPct, double offsetDeg, bool simultaneous) {
+  assert(std::isfinite(startPct) && std::isfinite(endPct) && std::isfinite(offsetDeg) &&
+         "makeTrimPath: startPct/endPct/offsetDeg must be finite");
   // m はトリムモード（1=同時, 2=個別）。AE の trim multiple shapes に対応。
   const int m = simultaneous ? 1 : 2;
   return parseJson(
@@ -749,7 +764,8 @@ Layer makeShapeLayer(const ShapeLayerParams& p) {
   l.ks = ks;
 
   // シェイプアイテムを 1 つのグループにまとめる（末尾に tr を付与）
-  json group = parseJson("{\"ty\":\"gr\",\"nm\":\"Group\",\"it\":[]}");
+  static const json kGroupBase = parseJson("{\"ty\":\"gr\",\"nm\":\"Group\",\"it\":[]}");
+  json group = kGroupBase;
   auto& it   = group["it"];
   for (auto& item : p.items) {
     it.get_array().push_back(item);
@@ -757,7 +773,8 @@ Layer makeShapeLayer(const ShapeLayerParams& p) {
   it.get_array().push_back(makeShapeTransform());
 
   // shapes 配列へグループを 1 件登録する
-  json shapes = parseJson("[]");
+  static const json kEmptyArray = parseJson("[]");
+  json shapes = kEmptyArray;
   shapes.get_array().push_back(group);
   l.shapes = shapes;
   return l;
@@ -1043,13 +1060,6 @@ void save(const Document& doc, const std::string& path) {
 }
 
 /**
- * @brief ドキュメント内の色を再着色する
- * @param doc 対象の Document（破壊的に変更）
- * @param fromHex 置換元の色（hex）。空の場合はすべての単色を対象とする。
- * @param toHex 置換後の色（hex）
- * @return 置換された色の個数
- */
-/**
  * @brief 名前でレイヤを削除する（トップレベルおよびアセット内のプリコンポジション）
  * @param doc 対象の Document（破壊的に変更）
  * @param name 削除するレイヤ名
@@ -1085,6 +1095,13 @@ bool removeLayer(Document& doc, std::string_view name) {
   return removed;
 }
 
+/**
+ * @brief ドキュメント内の色を再着色する
+ * @param doc 対象の Document（破壊的に変更）
+ * @param fromHex 置換元の色（hex）。空の場合はすべての単色を対象とする。
+ * @param toHex 置換後の色（hex）
+ * @return 置換された色の個数
+ */
 std::size_t recolor(Document& doc, std::string_view fromHex, std::string_view toHex) {
   const auto to = parseHexColor(toHex);
   if (!to) {
@@ -1183,7 +1200,9 @@ std::vector<Document> generateVariations(const Document& doc, const std::vector<
   std::vector<Document> out;
   out.reserve(paramSets.size());
   for (const auto& p : paramSets) {
-    // ディープコピーはラウンドトリップ（dump→parse）で作成する
+    // ディープコピーは dump→parse ラウンドトリップで作成する。
+    // glz::generic（ExtraMap を含む）には標準的なディープコピー手段がないため、
+    // シリアライズ・デシリアライズによる複製を採用している。
     Document copy = parse(dump(doc));
     if (p.recolor_to) {
       recolor(copy, p.recolor_from.value_or(""), *p.recolor_to);

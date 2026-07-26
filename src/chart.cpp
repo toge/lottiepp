@@ -7,6 +7,7 @@
 #include "chart.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <stdexcept>
 
@@ -25,12 +26,15 @@ namespace {
  * @return        開いた線分の JSON ノード
  */
 json makeLinePath(double x1, double y1, double x2, double y2) {
+  assert(std::isfinite(x1) && std::isfinite(y1) && std::isfinite(x2) && std::isfinite(y2) &&
+         "makeLinePath: coordinates must be finite");
   json node = parseJson("{\"ty\":\"sh\",\"nm\":\"line\",\"ks\":{\"a\":0,\"k\":{}}}");
   node["ks"]["k"] = parseJson("{\"i\":[],\"o\":[],\"v\":[],\"c\":false}");
+  static const json kZeroVec = parseJson("[0,0]");
   auto push = [&](double x, double y) {
     node["ks"]["k"]["v"].get_array().push_back(parseJson("[" + std::to_string(x) + "," + std::to_string(y) + "]"));
-    node["ks"]["k"]["i"].get_array().push_back(parseJson("[0,0]"));
-    node["ks"]["k"]["o"].get_array().push_back(parseJson("[0,0]"));
+    node["ks"]["k"]["i"].get_array().push_back(kZeroVec);
+    node["ks"]["k"]["o"].get_array().push_back(kZeroVec);
   };
   push(x1, y1);
   push(x2, y2);
@@ -44,6 +48,8 @@ json makeLinePath(double x1, double y1, double x2, double y2) {
  * @return        円の JSON ノード
  */
 json makeEllipseShape(double cx, double cy, double size) {
+  assert(std::isfinite(cx) && std::isfinite(cy) && std::isfinite(size) &&
+         "makeEllipseShape: coordinates/size must be finite");
   return parseJson(
       "{\"ty\":\"el\",\"nm\":\"dot\",\"p\":{\"a\":0,\"k\":[" + std::to_string(cx) + "," +
       std::to_string(cy) + "]},\"s\":{\"a\":0,\"k\":[" + std::to_string(size) + "," +
@@ -79,6 +85,9 @@ json makeDotGroup(double cx, double cy, double size, std::string_view colorHex) 
  */
 Layer makeTextLayer(std::string_view text, double x, double y, double size,
                     std::string_view colorHex, double op, const std::string& name) {
+  assert(std::isfinite(x) && std::isfinite(y) && std::isfinite(size) &&
+         std::isfinite(op) && size > 0.0 && op > 0.0 &&
+         "makeTextLayer: x/y/size/op must be finite and size/op must be positive");
   Layer l;
   l.ty = 5;
   l.nm = name;
@@ -125,10 +134,11 @@ json makeAreaPath(const std::vector<double>& xs, const std::vector<double>& ys,
                   double y0) {
   json node = parseJson(
       "{\"ty\":\"sh\",\"nm\":\"area\",\"ks\":{\"a\":0,\"k\":{\"i\":[],\"o\":[],\"v\":[],\"c\":true}}}");
+  static const json kZeroVec = parseJson("[0,0]");
   auto push = [&](double x, double y) {
     node["ks"]["k"]["v"].get_array().push_back(parseJson("[" + std::to_string(x) + "," + std::to_string(y) + "]"));
-    node["ks"]["k"]["i"].get_array().push_back(parseJson("[0,0]"));
-    node["ks"]["k"]["o"].get_array().push_back(parseJson("[0,0]"));
+    node["ks"]["k"]["i"].get_array().push_back(kZeroVec);
+    node["ks"]["k"]["o"].get_array().push_back(kZeroVec);
   };
   push(xs[0], y0);
   for (std::size_t k = 0; k < xs.size(); ++k) push(xs[k], ys[k]);
@@ -145,11 +155,12 @@ json makeAreaPath(const std::vector<double>& xs, const std::vector<double>& ys,
 json makePolyline(const std::vector<double>& xs, const std::vector<double>& ys) {
   json node = parseJson("{\"ty\":\"sh\",\"nm\":\"line\",\"ks\":{\"a\":0,\"k\":{}}}");
   node["ks"]["k"] = parseJson("{\"i\":[],\"o\":[],\"v\":[],\"c\":false}");
+  static const json kZeroVec = parseJson("[0,0]");
   for (std::size_t i = 0; i < xs.size(); ++i) {
     node["ks"]["k"]["v"].get_array().push_back(
         parseJson("[" + std::to_string(xs[i]) + "," + std::to_string(ys[i]) + "]"));
-    node["ks"]["k"]["i"].get_array().push_back(parseJson("[0,0]"));
-    node["ks"]["k"]["o"].get_array().push_back(parseJson("[0,0]"));
+    node["ks"]["k"]["i"].get_array().push_back(kZeroVec);
+    node["ks"]["k"]["o"].get_array().push_back(kZeroVec);
   }
   return node;
 }
@@ -162,6 +173,7 @@ json makePolyline(const std::vector<double>& xs, const std::vector<double>& ys) 
  * @return      tm（トリム）の JSON ノード
  */
 json makeGrowingTrim(double op) {
+  assert(std::isfinite(op) && op > 0.0 && "makeGrowingTrim: op must be finite and positive");
   const std::string kf =
       "[{\"i\":{\"x\":[0.4],\"y\":[1]},\"o\":{\"x\":[0.6],\"y\":[0]},\"t\":0,\"s\":[0]},"
       "{\"t\":" +

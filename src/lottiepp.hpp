@@ -3,10 +3,10 @@
 #include <glaze/glaze.hpp>
 #include <glaze/json/generic.hpp>
 
-#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace lottiepp {
@@ -14,7 +14,7 @@ namespace lottiepp {
 // Lottie の多様な（型が不定な）部分木（シェイプ、キーフレーム等）を保持する動的 JSON ノード
 using json = glz::generic;
 // 未知のキーを保持するための連想配列（未知キーを読み飛ばさずに保存するために使う）
-using ExtraMap = std::map<std::string, json, std::less<>>;
+using ExtraMap = std::unordered_map<std::string, json>;
 
 /**
  * @brief RGBA 色を表す構造体
