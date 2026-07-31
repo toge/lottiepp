@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <utility>
+#include <memory>
 
 namespace lottiepp {
 namespace {
@@ -455,9 +456,11 @@ std::size_t scaleExtras(ExtraMap& extra, double factor) {
  */
 std::size_t scaleLayer(Layer& layer, double factor) {
   std::size_t count = 0;
+  // Scale canonical members first
   scaleOptional(layer.ip, factor, count);
   scaleOptional(layer.op, factor, count);
   scaleOptional(layer.st, factor, count);
+
   if (layer.shapes) {
     count += scaleKeyframes(*layer.shapes, factor);
   }
@@ -473,7 +476,26 @@ std::size_t scaleLayer(Layer& layer, double factor) {
       }
     }
   }
+
+  // Avoid double-scaling ip/op/st when they appear both in structured members and in extra map.
+  // If the structured member exists, temporarily remove corresponding extra entries so that
+  // scaleExtras won't touch them; restore the original extras unchanged afterwards.
+  ExtraMap saved;
+  for (const char* k : {"ip", "op", "st"}) {
+    auto it = layer.extra.find(k);
+    if (it != layer.extra.end() && ( (k==std::string("ip") && layer.ip) || (k==std::string("op") && layer.op) || (k==std::string("st") && layer.st) )) {
+      saved[k] = it->second;
+      layer.extra.erase(it);
+    }
+  }
+
   count += scaleExtras(layer.extra, factor);
+
+  // restore saved extras (unchanged)
+  for (auto& [k, v] : saved) {
+    layer.extra[k] = v;
+  }
+
   return count;
 }
 
@@ -559,14 +581,20 @@ std::string extractAnimationFromZip(const std::string& path) {
     throw std::runtime_error("no animation json found in: " + path);
   }
 
-  size_t     size = 0;
-  void* const data = mz_zip_reader_extract_file_to_heap(&zip, bestName.c_str(), &size, 0);
-  mz_zip_reader_end(&zip);
+  size_t size = 0;
+  void* data = mz_zip_reader_extract_file_to_heap(&zip, bestName.c_str(), &size, 0);
+  // Ensure zip reader is ended in all cases
+  struct _ZipReaderEnd {
+    mz_zip_archive* _z;
+    _ZipReaderEnd(mz_zip_archive* z) : _z(z) {}
+    ~_ZipReaderEnd() { if (_z) mz_zip_reader_end(_z); }
+  } _ender(&zip);
   if (!data) {
     throw std::runtime_error("failed to extract animation from: " + path);
   }
+  // RAII for mz_free
+  std::unique_ptr<void, decltype(&mz_free)> _data_guard(data, &mz_free);
   std::string out(static_cast<const char*>(data), size);
-  mz_free(data);
   return out;
 }
 
@@ -587,18 +615,30 @@ void writeLottieZip(const Document& doc, const std::string& path) {
   if (!mz_zip_writer_init_file(&zip, path.c_str(), 0)) {
     throw std::runtime_error("failed to create .lottie: " + path);
   }
+  // RAII for writer end
+  struct _ZipWriterEnd {
+    mz_zip_archive* _z;
+    bool _finalized = false;
+    _ZipWriterEnd(mz_zip_archive* z) : _z(z) {}
+    ~_ZipWriterEnd()
+    {
+      if (_z) {
+        // best-effort finalize if not finalized; ignore errors in dtor
+        mz_zip_writer_end(_z);
+      }
+    }
+  } _wender(&zip);
+
   if (!mz_zip_writer_add_mem(&zip, "manifest.json", manifestStr.data(), manifestStr.size(), MZ_DEFAULT_COMPRESSION)) {
-    mz_zip_writer_end(&zip);
     throw std::runtime_error("failed to add manifest.json to: " + path);
   }
   if (!mz_zip_writer_add_mem(&zip, "animations/data.json", animation.data(), animation.size(), MZ_DEFAULT_COMPRESSION)) {
-    mz_zip_writer_end(&zip);
     throw std::runtime_error("failed to add animations/data.json to: " + path);
   }
   if (!mz_zip_writer_finalize_archive(&zip)) {
-    mz_zip_writer_end(&zip);
     throw std::runtime_error("failed to finalize .lottie: " + path);
   }
+  // explicit end (RAII will also end on scope exit)
   mz_zip_writer_end(&zip);
 }
 
@@ -611,7 +651,9 @@ void writeLottieZip(const Document& doc, const std::string& path) {
  * @return {"a":0,"k":<v>} の形の json ノード
  */
 json staticProp(double v) {
-  assert(std::isfinite(v) && "staticProp: value must be finite (not NaN/Inf)");
+  if (!std::isfinite(v)) {
+    throw std::invalid_argument("staticProp: value must be finite (not NaN/Inf)");
+  }
   // 静的プロパティ（a=0）の定型を組み立てる
   return parseJson("{\"a\":0,\"k\":" + std::to_string(v) + "}");
 }
@@ -651,9 +693,25 @@ json makeShapeTransform() {
  * @param round 角丸め半径（0=角丸めなし）
  * @return シェイプアイテムを表す json ノード
  */
+// トリムパス（ty="tm"）を生成するユーティリティ
+json makeTrimPath(double startPct, double endPct, double offsetDeg = 0.0, bool simultaneous = true)
+{
+  if (!std::isfinite(startPct) || !std::isfinite(endPct) || !std::isfinite(offsetDeg)) {
+    throw std::invalid_argument("makeTrimPath: parameters must be finite");
+  }
+  const int m = simultaneous ? 1 : 2;
+  const std::string node = "{\"ty\":\"tm\","
+      "\"s\":{\"a\":0,\"k\":" + std::to_string(startPct) + ","
+      "\"e\":{\"a\":0,\"k\":" + std::to_string(endPct) + ","
+      "\"o\":{\"a\":0,\"k\":" + std::to_string(offsetDeg) + "},"
+      "\"m\":" + std::to_string(m) + "}";
+  return parseJson(node);
+}
+
 json makeRect(double w, double h, double round) {
-  assert(std::isfinite(w) && std::isfinite(h) && std::isfinite(round) &&
-         "makeRect: w/h/round must be finite");
+  if (!std::isfinite(w) || !std::isfinite(h) || !std::isfinite(round)) {
+    throw std::invalid_argument("makeRect: w/h/round must be finite");
+  }
   // d=1 は描画方向（順方向）を示す既定値
   static const json kBase = parseJson(
       "{\"ty\":\"rc\",\"d\":1,"
@@ -672,7 +730,9 @@ json makeRect(double w, double h, double round) {
  * @return シェイプアイテムを表す json ノード
  */
 json makeEllipse(double w, double h) {
-  assert(std::isfinite(w) && std::isfinite(h) && "makeEllipse: w/h must be finite");
+  if (!std::isfinite(w) || !std::isfinite(h)) {
+    throw std::invalid_argument("makeEllipse: w/h must be finite");
+  }
   // d=1 は描画方向（順方向）を示す既定値
   static const json kBase = parseJson(
       "{\"ty\":\"el\",\"d\":1,"
@@ -690,7 +750,9 @@ json makeEllipse(double w, double h) {
  * @return シェイプアイテムを表す json ノード
  */
 json makeFill(std::string_view hex, double opacity) {
-  assert(std::isfinite(opacity) && "makeFill: opacity must be finite");
+  if (!std::isfinite(opacity)) {
+    throw std::invalid_argument("makeFill: opacity must be finite");
+  }
   const auto c = parseHexColor(hex);
   if (!c) {
     throw std::invalid_argument("invalid color: " + std::string(hex));
@@ -715,8 +777,9 @@ json makeFill(std::string_view hex, double opacity) {
  * @return シェイプアイテムを表す json ノード
  */
 json makeStroke(std::string_view hex, double width, double opacity) {
-  assert(std::isfinite(width) && std::isfinite(opacity) &&
-         "makeStroke: width/opacity must be finite");
+  if (!std::isfinite(width) || !std::isfinite(opacity)) {
+    throw std::invalid_argument("makeStroke: width/opacity must be finite");
+  }
   const auto c = parseHexColor(hex);
   if (!c) {
     throw std::invalid_argument("invalid color: " + std::string(hex));

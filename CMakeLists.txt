@@ -3,6 +3,7 @@ project(lottiepp VERSION 0.1.0 LANGUAGES C CXX)
 
 option(BUILD_TEST "Enable tests" ON)
 option(BUILD_CLI "Build lottieproc CLI" ON)
+option(ENABLE_CHART "Build the chart/plot helper (samples)" ON)
 
 set(STD_CPP cxx_std_23)
 
@@ -85,12 +86,14 @@ elseif(BUILD_TEST AND NOT Catch2_FOUND)
 endif()
 
 # --- chart/plot helper ---
-target_sources(lottiepp PRIVATE src/chart.cpp)
-
-# サンプル実行ファイル
-add_executable(line_chart_grow samples/line_chart_grow.cpp)
-target_link_libraries(line_chart_grow PRIVATE lottiepp)
-target_compile_features(line_chart_grow PRIVATE ${STD_CPP})
+if(ENABLE_CHART)
+    target_sources(lottiepp PRIVATE src/chart.cpp)
+    target_compile_definitions(lottiepp PRIVATE ENABLE_CHART=1)
+    # サンプル実行ファイル
+    add_executable(line_chart_grow samples/line_chart_grow.cpp)
+    target_link_libraries(line_chart_grow PRIVATE lottiepp)
+    target_compile_features(line_chart_grow PRIVATE ${STD_CPP})
+endif()
 
 # ---------------------------------------------------------------------------
 # Install + CMake package config

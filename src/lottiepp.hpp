@@ -250,7 +250,7 @@ json makeStroke(std::string_view hex, double width, double opacity = 100.0);
  * @param simultaneous true=全パスを同時にトリム, false=各パスを個別にトリム
  * @return シェイプ修飾アイテムを表す json ノード
  */
-
+json makeTrimPath(double startPct, double endPct, double offsetDeg = 0.0, bool simultaneous = true);
 
 /**
  * @brief シェイプレイヤ生成時のパラメータ
