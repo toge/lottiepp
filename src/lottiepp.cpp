@@ -694,7 +694,7 @@ json makeShapeTransform() {
  * @return シェイプアイテムを表す json ノード
  */
 // トリムパス（ty="tm"）を生成するユーティリティ
-json makeTrimPath(double startPct, double endPct, double offsetDeg = 0.0, bool simultaneous = true)
+json makeTrimPath(double startPct, double endPct, double offsetDeg, bool simultaneous)
 {
   if (!std::isfinite(startPct) || !std::isfinite(endPct) || !std::isfinite(offsetDeg)) {
     throw std::invalid_argument("makeTrimPath: parameters must be finite");
