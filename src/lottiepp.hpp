@@ -341,6 +341,9 @@ void addEffect(Layer& layer, const json& effect);
  */
 std::optional<Rgb> parseHexColor(std::string_view hex);
 
+// FREESTANDING ビルドではファイル I/O（load/save、.lottie ZIP 処理）は提供されない。
+// メモリ上の parse / dump 系 API のみ利用できる。
+#ifndef LOTTIEPP_FREESTANDING
 /**
  * @brief Lottie ドキュメントを読み込む（.json または .lottie）
  * @param path 入力ファイルのパス（拡張子で形式を判定）
@@ -354,6 +357,7 @@ Document load(const std::string& path);
  * @param path 出力ファイルのパス（拡張子で形式を判定）
  */
 void save(const Document& doc, const std::string& path);
+#endif  // LOTTIEPP_FREESTANDING
 
 /**
  * @brief Document を JSON 文字列にシリアライズする

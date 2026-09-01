@@ -220,3 +220,36 @@ TEST_CASE("makeDocument respects params") {
   REQUIRE(doc.h.value() == 1080);
   REQUIRE(doc.op.value() == Catch::Approx(90.0));
 }
+
+TEST_CASE("makeTrimPath generates a flat valid node") {
+  // 過去バグのリグレッション: 生成 JSON の閉じブレースが不足しており、
+  // "e" が "s" の内側に、"o" が "e" の内側にネストし、ルートも閉じられていなかったため
+  // 内部の parseJson が失敗していた（"index N: expected_comma"）。
+  lottiepp::json trim;
+  REQUIRE_NOTHROW(trim = lottiepp::makeTrimPath(10.0, 90.0, 45.0, true));
+
+  // s / e / o はそれぞれ独立した {"a":0,"k":<値>} プロパティとしてフラットに並ぶこと
+  REQUIRE(trim["ty"].as<std::string>() == "tm");
+  REQUIRE(trim["s"]["a"].as<int>() == 0);
+  REQUIRE(trim["s"]["k"].as<double>() == Catch::Approx(10.0));
+  REQUIRE(trim["e"]["a"].as<int>() == 0);
+  REQUIRE(trim["e"]["k"].as<double>() == Catch::Approx(90.0));
+  REQUIRE(trim["o"]["a"].as<int>() == 0);
+  REQUIRE(trim["o"]["k"].as<double>() == Catch::Approx(45.0));
+  // 旧バグでは "s" の内側に "e"、"e" の内側に "o" が入っていた
+  REQUIRE_FALSE(trim["s"].contains("e"));
+  REQUIRE_FALSE(trim["e"].contains("o"));
+  // simultaneous=true は m=1
+  REQUIRE(trim["m"].as<int>() == 1);
+
+  // 非同時モード（m=2）でも同様に妥当なノードを生成すること
+  lottiepp::json trim2;
+  REQUIRE_NOTHROW(trim2 = lottiepp::makeTrimPath(0.0, 50.0, 0.0, false));
+  REQUIRE(trim2["s"]["k"].as<double>() == Catch::Approx(0.0));
+  REQUIRE(trim2["e"]["k"].as<double>() == Catch::Approx(50.0));
+  REQUIRE(trim2["o"]["k"].as<double>() == Catch::Approx(0.0));
+  REQUIRE(trim2["m"].as<int>() == 2);
+
+  // 生成ノードはシリアライズ → 再解析のラウンドトリップを通ること
+  REQUIRE_NOTHROW(lottiepp::parseJson(lottiepp::dumpJson(trim)));
+}

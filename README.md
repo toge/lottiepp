@@ -47,6 +47,28 @@ CMake オプション:
 | --- | --- | --- |
 | `BUILD_TEST` | `ON` | Catch2 が見つかればテストを構築 |
 | `STATIC` | `OFF` | スタティックバイナリを生成 |
+| `ENABLE_FREESTANDING` | `OFF` | wasm32-unknown-unknown freestanding ビルド（`-nostdlib`） |
+
+## FREESTANDING ビルド（wasm32-unknown-unknown）
+
+`ENABLE_FREESTANDING=ON` で wasm3 埋め込みなどの freestanding ゲスト向けに、libc / libstdc++ に依存しない wasm32 静的ライブラリ（`liblottiepp.a`）をビルドできます。`-nostdlib` / `-fno-exceptions` / `-fno-rtti` でコンパイルされます。
+
+- ファイル I/O（`load` / `save`、`.lottie` ZIP 処理）は除外され、メモリ上の `parse` / `dump` / `parseJson` / `make*` 系 API のみ提供されます。
+- 例外の代わりにエラー時は wasm トラップで停止します。トラップ直後、ホスト側はエクスポートされた `g_lottieTrapMsg` / `g_lottieTrapLen`（メモリ上のアドレス）経由でエラーメッセージを参照できます。
+- ゲスト側ランタイムには `malloc` / `free` / `mem*` 系と C++ の `operator new` / `delete` の提供が必要です（参考実装: `test/freestanding_runtime.cpp`）。
+- C++ 標準ライブラリの実体は emsdk の `libc++-noexcept.a` / `libc++abi-noexcept.a` / compiler-rt builtins を使用します（emsdk の sysroot を利用）。
+
+```sh
+export EMSDK=~/vm/emsdk
+export VCPKG_ROOT=~/vm/vcpkg
+cmake -B build_freestanding -S . \
+  -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+  -DCMAKE_CXX_COMPILER=$EMSDK/upstream/bin/clang \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DENABLE_FREESTANDING=ON
+cmake --build build_freestanding --parallel
+ctest --test-dir build_freestanding  # スモークテスト（要 node）
+```
 
 ## CLI ツール `lottieproc`
 

@@ -1,20 +1,83 @@
 #include "lottiepp.hpp"
 
+#ifndef LOTTIEPP_FREESTANDING
 #include "miniz.h"
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
+#endif
 
-#include <glaze/exceptions/json_exceptions.hpp>
 #include <glaze/json/prettify.hpp>
 
 #include <cassert>
 #include <cmath>
 #include <algorithm>
-#include <fstream>
-#include <sstream>
-#include <stdexcept>
 #include <utility>
 #include <memory>
 
 namespace lottiepp {
+
+#ifdef LOTTIEPP_FREESTANDING
+namespace detail {
+// トラップ理由のデバッグ用エクスポート（スモークテストで node から読む）
+extern "C" {
+const char* g_lottieTrapMsg = nullptr;
+int         g_lottieTrapLen = 0;
+}
+
+// freestanding 環境では例外が使えないため、エラー時は wasm トラップで停止する
+[[noreturn]] inline void throwAbort(const std::string& msg) noexcept {
+  g_lottieTrapMsg = msg.c_str();  // デバッグ用: トラップ後にホスト側から参照できる
+  g_lottieTrapLen = static_cast<int>(msg.size());
+  __builtin_trap();
+}
+
+// std::to_string の代替（libc 非依存）。整数は自前の 10 進変換、浮動小数は glaze のシリアライザ（最短ラウンドトリップ表現）を利用する
+template<typename T>
+  requires std::is_integral_v<T>
+inline std::string to_string(T v) {
+  char        buf[24];
+  char* const end = buf + sizeof(buf);
+  char*       p   = end;
+  // 10 進変換（負数は絶対値に直してから処理する）
+  using U         = std::make_unsigned_t<T>;
+  const bool neg  = v < 0;
+  U           u   = neg ? static_cast<U>(0) - static_cast<U>(v) : static_cast<U>(v);
+  do {
+    *--p = static_cast<char>('0' + static_cast<int>(u % 10));
+    u /= 10;
+  } while (u != 0);
+  if (neg) {
+    *--p = '-';
+  }
+  return std::string(p, static_cast<std::size_t>(end - p));
+}
+
+inline std::string to_string(double v) {
+  const json  n = v;
+  std::string s;
+  if (glz::write<glz::opts{.error_on_unknown_keys = false, .prettify = false}>(n, s)) {
+    throwAbort("failed to serialize number");
+  }
+  return s;
+}
+
+inline std::string to_string(float v) {
+  return to_string(static_cast<double>(v));
+}
+}  // namespace detail
+
+#define LOTTIEPP_THROW(msg)     ::lottiepp::detail::throwAbort(msg)
+#define LOTTIEPP_THROW_ARG(msg) ::lottiepp::detail::throwAbort(msg)
+#else
+namespace detail {
+using ::std::to_string;  // std::to_string への転送（ホスト環境ビルド）
+}
+
+#define LOTTIEPP_THROW(msg)     throw std::runtime_error(msg)
+#define LOTTIEPP_THROW_ARG(msg) throw std::invalid_argument(msg)
+#endif
+
 namespace {
 
 template<typename Fn>
@@ -34,6 +97,7 @@ constexpr glz::opts kReadOpts{.error_on_unknown_keys = false, .skip_null_members
 // 書き出し時のオプション：プリティ化は行わず、上記と同様の未知キー扱いとする
 constexpr glz::opts kWriteOpts{.error_on_unknown_keys = false, .skip_null_members = true, .prettify = false};
 
+#ifndef LOTTIEPP_FREESTANDING
 /**
  * @brief ファイル内容をバイナリで全読み込みする
  * @param path 読み込むファイルのパス
@@ -42,7 +106,7 @@ constexpr glz::opts kWriteOpts{.error_on_unknown_keys = false, .skip_null_member
 std::string readFile(const std::string& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) {
-    throw std::runtime_error("failed to open file: " + path);
+    LOTTIEPP_THROW("failed to open file: " + path);
   }
   std::ostringstream ss;
   ss << in.rdbuf();
@@ -57,11 +121,11 @@ std::string readFile(const std::string& path) {
 void writeFile(const std::string& path, std::string_view data) {
   std::ofstream out(path, std::ios::binary);
   if (!out) {
-    throw std::runtime_error("failed to write file: " + path);
+    LOTTIEPP_THROW("failed to write file: " + path);
   }
   out.write(data.data(), static_cast<std::streamsize>(data.size()));
   if (!out) {
-    throw std::runtime_error("failed to write file: " + path);
+    LOTTIEPP_THROW("failed to write file: " + path);
   }
 }
 
@@ -89,6 +153,7 @@ std::string extensionOf(const std::string& path) {
   }
   return toLower(path.substr(pos));
 }
+#endif  // LOTTIEPP_FREESTANDING
 
 /**
  * @brief 1 桁の 16 進数字を数値に変換する
@@ -538,6 +603,7 @@ bool replaceTextInLayer(Layer& layer, std::string_view layerName, std::string_vi
   return found;
 }
 
+#ifndef LOTTIEPP_FREESTANDING
 /**
  * @brief .lottie(zip) 内から最適なアニメーション JSON を抽出する
  * @details ファイル名のスコアリングにより、最も妥当な JSON を 1 つ選択する。
@@ -547,7 +613,7 @@ bool replaceTextInLayer(Layer& layer, std::string_view layerName, std::string_vi
 std::string extractAnimationFromZip(const std::string& path) {
   mz_zip_archive zip{};
   if (!mz_zip_reader_init_file(&zip, path.c_str(), 0)) {
-    throw std::runtime_error("failed to open .lottie zip: " + path);
+    LOTTIEPP_THROW("failed to open .lottie zip: " + path);
   }
 
   const mz_uint n = mz_zip_reader_get_num_files(&zip);
@@ -578,7 +644,7 @@ std::string extractAnimationFromZip(const std::string& path) {
 
   if (bestScore < 0) {
     mz_zip_reader_end(&zip);
-    throw std::runtime_error("no animation json found in: " + path);
+    LOTTIEPP_THROW("no animation json found in: " + path);
   }
 
   size_t size = 0;
@@ -590,7 +656,7 @@ std::string extractAnimationFromZip(const std::string& path) {
     ~_ZipReaderEnd() { if (_z) mz_zip_reader_end(_z); }
   } _ender(&zip);
   if (!data) {
-    throw std::runtime_error("failed to extract animation from: " + path);
+    LOTTIEPP_THROW("failed to extract animation from: " + path);
   }
   // RAII for mz_free
   std::unique_ptr<void, decltype(&mz_free)> _data_guard(data, &mz_free);
@@ -613,7 +679,7 @@ void writeLottieZip(const Document& doc, const std::string& path) {
 
   mz_zip_archive zip{};
   if (!mz_zip_writer_init_file(&zip, path.c_str(), 0)) {
-    throw std::runtime_error("failed to create .lottie: " + path);
+    LOTTIEPP_THROW("failed to create .lottie: " + path);
   }
   // RAII for writer end
   struct _ZipWriterEnd {
@@ -630,17 +696,18 @@ void writeLottieZip(const Document& doc, const std::string& path) {
   } _wender(&zip);
 
   if (!mz_zip_writer_add_mem(&zip, "manifest.json", manifestStr.data(), manifestStr.size(), MZ_DEFAULT_COMPRESSION)) {
-    throw std::runtime_error("failed to add manifest.json to: " + path);
+    LOTTIEPP_THROW("failed to add manifest.json to: " + path);
   }
   if (!mz_zip_writer_add_mem(&zip, "animations/data.json", animation.data(), animation.size(), MZ_DEFAULT_COMPRESSION)) {
-    throw std::runtime_error("failed to add animations/data.json to: " + path);
+    LOTTIEPP_THROW("failed to add animations/data.json to: " + path);
   }
   if (!mz_zip_writer_finalize_archive(&zip)) {
-    throw std::runtime_error("failed to finalize .lottie: " + path);
+    LOTTIEPP_THROW("failed to finalize .lottie: " + path);
   }
   // explicit end (RAII will also end on scope exit)
   mz_zip_writer_end(&zip);
 }
+#endif  // LOTTIEPP_FREESTANDING
 
 }  // namespace
 
@@ -652,10 +719,10 @@ void writeLottieZip(const Document& doc, const std::string& path) {
  */
 json staticProp(double v) {
   if (!std::isfinite(v)) {
-    throw std::invalid_argument("staticProp: value must be finite (not NaN/Inf)");
+    LOTTIEPP_THROW_ARG("staticProp: value must be finite (not NaN/Inf)");
   }
   // 静的プロパティ（a=0）の定型を組み立てる
-  return parseJson("{\"a\":0,\"k\":" + std::to_string(v) + "}");
+  return parseJson("{\"a\":0,\"k\":" + detail::to_string(v) + "}");
 }
 
 /**
@@ -697,20 +764,20 @@ json makeShapeTransform() {
 json makeTrimPath(double startPct, double endPct, double offsetDeg, bool simultaneous)
 {
   if (!std::isfinite(startPct) || !std::isfinite(endPct) || !std::isfinite(offsetDeg)) {
-    throw std::invalid_argument("makeTrimPath: parameters must be finite");
+    LOTTIEPP_THROW_ARG("makeTrimPath: parameters must be finite");
   }
   const int m = simultaneous ? 1 : 2;
   const std::string node = "{\"ty\":\"tm\","
-      "\"s\":{\"a\":0,\"k\":" + std::to_string(startPct) + ","
-      "\"e\":{\"a\":0,\"k\":" + std::to_string(endPct) + ","
-      "\"o\":{\"a\":0,\"k\":" + std::to_string(offsetDeg) + "},"
-      "\"m\":" + std::to_string(m) + "}";
+      "\"s\":{\"a\":0,\"k\":" + detail::to_string(startPct) + "},"
+      "\"e\":{\"a\":0,\"k\":" + detail::to_string(endPct) + "},"
+      "\"o\":{\"a\":0,\"k\":" + detail::to_string(offsetDeg) + "},"
+      "\"m\":" + detail::to_string(m) + "}";
   return parseJson(node);
 }
 
 json makeRect(double w, double h, double round) {
   if (!std::isfinite(w) || !std::isfinite(h) || !std::isfinite(round)) {
-    throw std::invalid_argument("makeRect: w/h/round must be finite");
+    LOTTIEPP_THROW_ARG("makeRect: w/h/round must be finite");
   }
   // d=1 は描画方向（順方向）を示す既定値
   static const json kBase = parseJson(
@@ -718,7 +785,7 @@ json makeRect(double w, double h, double round) {
       "\"s\":{\"a\":0,\"k\":[0,0]},\"p\":{\"a\":0,\"k\":[0,0]},\"r\":{\"a\":0,\"k\":0}}");
   json n = kBase;
   // サイズと角丸め半径を指定値で上書きする
-  n["s"] = staticProp("[" + std::to_string(w) + "," + std::to_string(h) + "]");
+  n["s"] = staticProp("[" + detail::to_string(w) + "," + detail::to_string(h) + "]");
   n["r"] = staticProp(round);
   return n;
 }
@@ -731,7 +798,7 @@ json makeRect(double w, double h, double round) {
  */
 json makeEllipse(double w, double h) {
   if (!std::isfinite(w) || !std::isfinite(h)) {
-    throw std::invalid_argument("makeEllipse: w/h must be finite");
+    LOTTIEPP_THROW_ARG("makeEllipse: w/h must be finite");
   }
   // d=1 は描画方向（順方向）を示す既定値
   static const json kBase = parseJson(
@@ -739,7 +806,7 @@ json makeEllipse(double w, double h) {
       "\"s\":{\"a\":0,\"k\":[0,0]},\"p\":{\"a\":0,\"k\":[0,0]}}");
   json n = kBase;
   // サイズを指定値で上書きする
-  n["s"] = staticProp("[" + std::to_string(w) + "," + std::to_string(h) + "]");
+  n["s"] = staticProp("[" + detail::to_string(w) + "," + detail::to_string(h) + "]");
   return n;
 }
 
@@ -751,11 +818,11 @@ json makeEllipse(double w, double h) {
  */
 json makeFill(std::string_view hex, double opacity) {
   if (!std::isfinite(opacity)) {
-    throw std::invalid_argument("makeFill: opacity must be finite");
+    LOTTIEPP_THROW_ARG("makeFill: opacity must be finite");
   }
   const auto c = parseHexColor(hex);
   if (!c) {
-    throw std::invalid_argument("invalid color: " + std::string(hex));
+    LOTTIEPP_THROW_ARG("invalid color: " + std::string(hex));
   }
   // r=1 は塗りつぶしルール（nonzero）、bm=0 はブレンドモード（通常）の既定値
   static const json kBase = parseJson(
@@ -764,8 +831,8 @@ json makeFill(std::string_view hex, double opacity) {
   json n = kBase;
   // 不透明度と色（RGBA、各成分 0.0～1.0）を指定値で上書きする
   n["o"] = staticProp(opacity);
-  n["c"] = staticProp("[" + std::to_string(c->r) + "," + std::to_string(c->g) + "," +
-                      std::to_string(c->b) + "," + std::to_string(c->a) + "]");
+  n["c"] = staticProp("[" + detail::to_string(c->r) + "," + detail::to_string(c->g) + "," +
+                      detail::to_string(c->b) + "," + detail::to_string(c->a) + "]");
   return n;
 }
 
@@ -778,11 +845,11 @@ json makeFill(std::string_view hex, double opacity) {
  */
 json makeStroke(std::string_view hex, double width, double opacity) {
   if (!std::isfinite(width) || !std::isfinite(opacity)) {
-    throw std::invalid_argument("makeStroke: width/opacity must be finite");
+    LOTTIEPP_THROW_ARG("makeStroke: width/opacity must be finite");
   }
   const auto c = parseHexColor(hex);
   if (!c) {
-    throw std::invalid_argument("invalid color: " + std::string(hex));
+    LOTTIEPP_THROW_ARG("invalid color: " + std::string(hex));
   }
   // r=1: 塗りつぶしルール, bm=0: ブレンドモード(通常)
   // lc=2: 線端をラウンド, lj=2: 線結合をラウンド, ml=4: マイター限界値(既定)
@@ -793,8 +860,8 @@ json makeStroke(std::string_view hex, double width, double opacity) {
   // 不透明度・線幅・色を指定値で上書きする
   n["o"] = staticProp(opacity);
   n["w"] = staticProp(width);
-  n["c"] = staticProp("[" + std::to_string(c->r) + "," + std::to_string(c->g) + "," +
-                      std::to_string(c->b) + "," + std::to_string(c->a) + "]");
+  n["c"] = staticProp("[" + detail::to_string(c->r) + "," + detail::to_string(c->g) + "," +
+                      detail::to_string(c->b) + "," + detail::to_string(c->a) + "]");
   return n;
 }
 
@@ -818,7 +885,7 @@ Layer makeShapeLayer(const ShapeLayerParams& p) {
   Transform ks;
   ks.o = staticProp(p.opacity);           // 不透明度（%）
   ks.r = staticProp(0.0);                 // 回転（度）
-  ks.p = staticProp("[" + std::to_string(p.x) + "," + std::to_string(p.y) + ",0]");  // 位置（中心）
+  ks.p = staticProp("[" + detail::to_string(p.x) + "," + detail::to_string(p.y) + ",0]");  // 位置（中心）
   ks.a = staticProp("[0,0,0]");           // アンカーポイント
   ks.s = staticProp("[100,100,100]");      // スケール（%・等倍）
   l.ks = ks;
@@ -858,7 +925,7 @@ void addLayer(Document& doc, Layer layer) {
     }
   }
   // 重複しないよう最大値 +1 を割り当てる
-  layer.extra["ind"] = parseJson(std::to_string(maxInd + 1));
+  layer.extra["ind"] = parseJson(detail::to_string(maxInd + 1));
   doc.layers.push_back(std::move(layer));
 }
 
@@ -930,9 +997,9 @@ json makeGaussianBlur(double stddev, bool repeatEdge) {
       "\"ix\":1,\"en\":1,\"ef\":["
       "{\"ty\":\"slider\",\"nm\":\"Blur Dimensions\",\"mn\":\"ADBE Gaussian Blur-0001\",\"ix\":1,\"v\":{\"a\":0,\"k\":1}},"
       "{\"ty\":\"slider\",\"nm\":\"Blur Radius\",\"mn\":\"ADBE Gaussian Blur-0002\",\"ix\":2,\"v\":{\"a\":0,\"k\":" +
-      std::to_string(stddev) + "}},"
+      detail::to_string(stddev) + "}},"
       "{\"ty\":\"checkbox\",\"nm\":\"Repeat Edge Pixels\",\"mn\":\"ADBE Gaussian Blur-0003\",\"ix\":3,\"v\":{\"a\":0,\"k\":" +
-      std::to_string(repeatEdge ? 1 : 0) + "}}"
+      detail::to_string(repeatEdge ? 1 : 0) + "}}"
       "]}");
 }
 
@@ -1027,7 +1094,12 @@ std::optional<Rgb> parseHexColor(std::string_view hex) {
  * @return 解析された json ノード
  */
 json parseJson(std::string_view text) {
-  return glz::ex::read_json<json>(text);
+  json        g{};
+  const auto  ec = glz::read_json(g, text);
+  if (ec) {
+    LOTTIEPP_THROW("read_json error: " + glz::format_error(ec, text));
+  }
+  return g;
 }
 
 /**
@@ -1038,7 +1110,7 @@ json parseJson(std::string_view text) {
 std::string dumpJson(const json& node) {
   auto out = node.dump();
   if (!out) {
-    throw std::runtime_error("failed to serialize json");
+    LOTTIEPP_THROW("failed to serialize json");
   }
   return *out;
 }
@@ -1061,7 +1133,7 @@ Document parse(std::string_view text) {
   Document doc;
   const auto ec = glz::read<kReadOpts>(doc, text);
   if (ec) {
-    throw std::runtime_error("read_json error: " + glz::format_error(ec, text));
+    LOTTIEPP_THROW("read_json error: " + glz::format_error(ec, text));
   }
   return doc;
 }
@@ -1075,7 +1147,7 @@ std::string dump(const Document& doc) {
   std::string out;
   const auto  ec = glz::write<kWriteOpts>(doc, out);
   if (ec) {
-    throw std::runtime_error("failed to serialize document");
+    LOTTIEPP_THROW("failed to serialize document");
   }
   return out;
 }
@@ -1089,6 +1161,7 @@ std::string dumpPretty(const Document& doc) {
   return glz::prettify_json(dump(doc));
 }
 
+#ifndef LOTTIEPP_FREESTANDING
 /**
  * @brief パスから Document を読み込む（.json または .lottie/.zip）
  * @param path 入力ファイルのパス
@@ -1118,6 +1191,7 @@ void save(const Document& doc, const std::string& path) {
   }
   writeFile(path, dumpPretty(doc));
 }
+#endif  // LOTTIEPP_FREESTANDING
 
 /**
  * @brief 名前でレイヤを削除する（トップレベルおよびアセット内のプリコンポジション）
@@ -1165,13 +1239,13 @@ bool removeLayer(Document& doc, std::string_view name) {
 std::size_t recolor(Document& doc, std::string_view fromHex, std::string_view toHex) {
   const auto to = parseHexColor(toHex);
   if (!to) {
-    throw std::invalid_argument("invalid toHex color: " + std::string(toHex));
+    LOTTIEPP_THROW_ARG("invalid toHex color: " + std::string(toHex));
   }
   std::optional<Rgb> from;
   if (!fromHex.empty()) {
     from = parseHexColor(fromHex);
     if (!from) {
-      throw std::invalid_argument("invalid fromHex color: " + std::string(fromHex));
+      LOTTIEPP_THROW_ARG("invalid fromHex color: " + std::string(fromHex));
     }
   }
 
@@ -1207,7 +1281,7 @@ bool replaceText(Document& doc, std::string_view layerName, std::string_view new
  */
 std::size_t setSpeed(Document& doc, double factor) {
   if (factor <= 0.0 || !std::isfinite(factor)) {
-    throw std::invalid_argument("speed factor must be finite and > 0");
+    LOTTIEPP_THROW_ARG("speed factor must be finite and > 0");
   }
   std::size_t count = 0;
   scaleOptional(doc.ip, factor, count);
