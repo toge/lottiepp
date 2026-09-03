@@ -55,6 +55,7 @@ CMake オプション:
 
 - 本ライブラリの WASI 対応は wasi-sdk sysroot を用いた wasm32-wasip1 でのビルドを想定（wasm3 等で実行可能）。
 - wasip1 では WASI 経由で `<iostream>` / `<fstream>` が利用可能なため、ファイル I/O（`load` / `save`）は WASI minimal でもそのまま利用できます。
+- CLI（`lottieproc`）・chart ヘルパも WASI minimal でビルド可能です。`chart.cpp` / `main.cpp` の例外送出は `LOTTIEPP_THROW` マクロ経由で `std::abort()` に置き換わります。
 - 例外の代わりにエラー時は `std::abort()` で停止します。
 
 ```sh

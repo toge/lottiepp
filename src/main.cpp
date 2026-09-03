@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <optional>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -135,14 +134,16 @@ int main(int argc, char** argv) {
   std::vector<PendingEffect> pendingEffects;  // 追加するエフェクト群
   std::vector<std::string>   removeLayers;    // 削除するレイヤ名群
 
+#ifndef LOTTIEPP_WASI_MINIMAL
   try {
+#endif
     // 引数を先頭から順に解析する
     for (int i = 1; i < argc; ++i) {
       const std::string_view arg = argv[i];
       // 残り引数が n 個未満なら例外を投げるヘルパ
       auto need = [&](int n) {
         if (i + n >= argc) {
-          throw std::runtime_error("missing argument after " + std::string(arg));
+          LOTTIEPP_THROW("missing argument after " + std::string(arg));
         }
       };
       if (arg == "-h" || arg == "--help") {
@@ -169,7 +170,7 @@ int main(int argc, char** argv) {
         need(1);
         variations = std::stoi(argv[++i]);
         if (variations < 1) {
-          throw std::runtime_error("--variations must be >= 1");
+          LOTTIEPP_THROW("--variations must be >= 1");
         }
       } else if (arg == "--add-shape") {
         // --add-shape <type> <x> <y> <w> <h> <color> <from> <to> [name]
@@ -240,7 +241,7 @@ int main(int argc, char** argv) {
       } else if (s.type == "ellipse") {
         p.items.push_back(lottiepp::makeEllipse(s.w, s.h));
       } else {
-        throw std::runtime_error("unknown shape type: " + s.type);
+        LOTTIEPP_THROW("unknown shape type: " + s.type);
       }
       p.items.push_back(lottiepp::makeFill(s.color));
       lottiepp::addLayer(doc, lottiepp::makeShapeLayer(p));
@@ -251,12 +252,12 @@ int main(int argc, char** argv) {
     for (auto& e : pendingEffects) {
       auto* layer = lottiepp::findLayer(doc, e.layer);
       if (!layer) {
-        throw std::runtime_error("layer not found for effect: " + e.layer);
+        LOTTIEPP_THROW("layer not found for effect: " + e.layer);
       }
       if (e.type == "blur") {
         lottiepp::addEffect(*layer, lottiepp::makeGaussianBlur(e.value));
       } else {
-        throw std::runtime_error("unknown effect type: " + e.type);
+        LOTTIEPP_THROW("unknown effect type: " + e.type);
       }
       std::cout << "add-effect: " << e.type << " -> " << e.layer << "\n";
     }
@@ -311,8 +312,10 @@ int main(int argc, char** argv) {
     lottiepp::save(doc, output);
     std::cout << "wrote " << output << "\n";
     return 0;
+#ifndef LOTTIEPP_WASI_MINIMAL
   } catch (const std::exception& ex) {
     std::cerr << "error: " << ex.what() << "\n";
     return 1;
   }
+#endif
 }

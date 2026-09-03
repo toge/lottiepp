@@ -3,7 +3,6 @@
 #include "miniz.h"
 #include <fstream>
 #include <sstream>
-#include <stdexcept>
 
 #include <glaze/json/prettify.hpp>
 

@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <stdexcept>
 
 namespace lottiepp::chart {
 
@@ -27,7 +26,7 @@ namespace {
  */
 json makeLinePath(double x1, double y1, double x2, double y2) {
   if (!std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(x2) || !std::isfinite(y2)) {
-    throw std::invalid_argument("makeLinePath: coordinates must be finite");
+    LOTTIEPP_THROW_ARG("makeLinePath: coordinates must be finite");
   }
   json node = parseJson("{\"ty\":\"sh\",\"nm\":\"line\",\"ks\":{\"a\":0,\"k\":{}}}");
   node["ks"]["k"] = parseJson("{\"i\":[],\"o\":[],\"v\":[],\"c\":false}");
@@ -50,7 +49,7 @@ json makeLinePath(double x1, double y1, double x2, double y2) {
  */
 json makeEllipseShape(double cx, double cy, double size) {
   if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(size)) {
-    throw std::invalid_argument("makeEllipseShape: coordinates/size must be finite");
+    LOTTIEPP_THROW_ARG("makeEllipseShape: coordinates/size must be finite");
   }
   return parseJson(
       "{\"ty\":\"el\",\"nm\":\"dot\",\"p\":{\"a\":0,\"k\":[" + std::to_string(cx) + "," +
@@ -108,7 +107,7 @@ Layer makeTextLayer(std::string_view text, double x, double y, double size,
                     std::string_view colorHex, double op, const std::string& name) {
   if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(size) ||
       !std::isfinite(op) || size <= 0.0 || op <= 0.0) {
-    throw std::invalid_argument("makeTextLayer: x/y/size/op must be finite and size/op must be positive");
+    LOTTIEPP_THROW_ARG("makeTextLayer: x/y/size/op must be finite and size/op must be positive");
   }
   Layer l;
   l.ty = 5;
@@ -195,7 +194,7 @@ json makePolyline(const std::vector<double>& xs, const std::vector<double>& ys) 
  */
 json makeGrowingTrim(double op) {
   if (!std::isfinite(op) || !(op > 0.0)) {
-    throw std::invalid_argument("makeGrowingTrim: op must be finite and positive");
+    LOTTIEPP_THROW_ARG("makeGrowingTrim: op must be finite and positive");
   }
   const std::string kf =
       "[{\"i\":{\"x\":[0.4],\"y\":[1]},\"o\":{\"x\":[0.6],\"y\":[0]},\"t\":0,\"s\":[0]},"
@@ -385,16 +384,16 @@ std::vector<Layer> makeGrid(const ChartOptions& opt, double x0, double y0,
  */
 Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
   if (series.empty()) {
-    throw std::invalid_argument("plot: at least one series required");
+    LOTTIEPP_THROW_ARG("plot: at least one series required");
   }
 
   // 全系列から Y の最小値・最大値を決定し、正規化の範囲とする
   for (const auto& s : series) {
     if (s.data.empty()) {
-      throw std::invalid_argument("plot: each series needs >= 1 point");
+      LOTTIEPP_THROW_ARG("plot: each series needs >= 1 point");
     }
     if (opt.chartType != ChartType::Bar && s.data.size() < 2) {
-      throw std::invalid_argument("plot: line/scatter chart needs >= 2 points per series");
+      LOTTIEPP_THROW_ARG("plot: line/scatter chart needs >= 2 points per series");
     }
   }
   double minY = series[0].data[0].y;

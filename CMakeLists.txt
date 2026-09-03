@@ -10,9 +10,6 @@ if(ENABLE_WASI_MINIMAL)
     add_compile_definitions(LOTTIEPP_WASI_MINIMAL=1)
     # 例外なしモード：wasi-sdk でも例外ランタイム不要でリンク可能にする
     add_compile_options(-fno-exceptions)
-    # WASI minimal では CLI / chart（例外を直接 throw する箇所がある）はビルド対象外とする
-    set(BUILD_CLI OFF)
-    set(ENABLE_CHART OFF)
 endif()
 
 set(STD_CPP cxx_std_23)
