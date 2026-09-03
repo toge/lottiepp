@@ -1,7 +1,10 @@
 {
   "dependencies": [
+    {
+      "name": "catch2",
+      "platform": "emscripten | !wasm32"
+    },
     "glaze",
-    "catch2",
     "miniz"
   ]
 }

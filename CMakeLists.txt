@@ -4,13 +4,15 @@ project(lottiepp VERSION 0.1.0 LANGUAGES C CXX)
 option(BUILD_TEST "Enable tests" ON)
 option(BUILD_CLI "Build lottieproc CLI" ON)
 option(ENABLE_CHART "Build the chart/plot helper (samples)" ON)
-option(ENABLE_FREESTANDING "Build freestanding wasm32-unknown-unknown library (-nostdlib)" OFF)
+option(ENABLE_WASI_MINIMAL "Enable WASI minimal (no exceptions) mode - wasi-sdk wasm32-wasip1 assumed" OFF)
 
-if(ENABLE_FREESTANDING)
-    message(STATUS "ENABLE_FREESTANDING: freestanding wasm32 build (CLI / chart / tests / samples disabled)")
+if(ENABLE_WASI_MINIMAL)
+    add_compile_definitions(LOTTIEPP_WASI_MINIMAL=1)
+    # 例外なしモード：wasi-sdk でも例外ランタイム不要でリンク可能にする
+    add_compile_options(-fno-exceptions)
+    # WASI minimal では CLI / chart（例外を直接 throw する箇所がある）はビルド対象外とする
     set(BUILD_CLI OFF)
     set(ENABLE_CHART OFF)
-    set(BUILD_TEST OFF)
 endif()
 
 set(STD_CPP cxx_std_23)
@@ -46,13 +48,10 @@ if (CMAKE_COMPILER_IS_GNUCXX)
     endif()
 endif()
 
-## add LTO flag (freestanding wasm ビルドでは無効)
-if(NOT ENABLE_FREESTANDING)
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT ipo_supported OUTPUT error)
-    if(ipo_supported)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-    endif()
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported OUTPUT error)
+if(ipo_supported)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
 ## other flag
@@ -66,48 +65,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lprofiler -ltcmalloc")
 
 find_package(glaze REQUIRED CONFIG)
-if(NOT ENABLE_FREESTANDING)
-    find_package(miniz REQUIRED CONFIG)
-endif()
+find_package(miniz REQUIRED CONFIG)
 find_package(Catch2 CONFIG QUIET)
-
-if(ENABLE_FREESTANDING)
-    # --- freestanding (wasm32-unknown-unknown, -nostdlib) ビルド設定 ---
-    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        message(FATAL_ERROR "ENABLE_FREESTANDING=ON requires clang (emsdk clang). e.g. -DCMAKE_CXX_COMPILER=$ENV{HOME}/vm/emsdk/upstream/bin/clang")
-    endif()
-    set(LOTTIEPP_EMSDK "$ENV{EMSDK}")
-    if(NOT LOTTIEPP_EMSDK)
-        set(LOTTIEPP_EMSDK "$ENV{HOME}/vm/emsdk")
-    endif()
-    set(LOTTIEPP_WASM_SYSROOT "${LOTTIEPP_EMSDK}/upstream/emscripten/cache/sysroot")
-    if(NOT EXISTS "${LOTTIEPP_WASM_SYSROOT}/include/c++/v1")
-        message(FATAL_ERROR "libc++ headers for wasm not found: ${LOTTIEPP_WASM_SYSROOT} (set EMSDK env var)")
-    endif()
-    set(LOTTIEPP_WASM_FLAGS
-        --target=wasm32-unknown-unknown
-        -nostdlib
-        -nostdinc++
-        -fno-exceptions
-        -fno-rtti
-        -Oz
-        -ffunction-sections
-        -fdata-sections
-    )
-    # wasm-ld は --dependency-file 非対応のため CMake のリンカ依存ファイル生成を無効化する
-    set(CMAKE_LINK_DEPENDS_USE_LINKER OFF)
-    set(LOTTIEPP_WASM_INCLUDES
-        "${LOTTIEPP_WASM_SYSROOT}/include/c++/v1"
-        "${LOTTIEPP_WASM_SYSROOT}/include"
-    )
-    # -fno-exceptions 向けにビルド済みの libc++ / libc++abi（extern template 等の実体提供用）と
-    # compiler-rt builtins（__multi3 等の 128bit 演算ヘルパ用）
-    set(LOTTIEPP_WASM_LIBCXX
-        "${LOTTIEPP_WASM_SYSROOT}/lib/wasm32-emscripten/libc++-noexcept.a"
-        "${LOTTIEPP_WASM_SYSROOT}/lib/wasm32-emscripten/libc++abi-noexcept.a"
-        "${LOTTIEPP_WASM_SYSROOT}/lib/wasm32-emscripten/libclang_rt.builtins.a"
-    )
-endif()
 
 # --- lottiepp library (static) ---
 add_library(lottiepp STATIC
@@ -118,50 +77,8 @@ target_include_directories(lottiepp
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-if(ENABLE_FREESTANDING)
-    target_include_directories(lottiepp SYSTEM PRIVATE ${LOTTIEPP_WASM_INCLUDES})
-    target_compile_options(lottiepp PRIVATE ${LOTTIEPP_WASM_FLAGS})
-    target_compile_definitions(lottiepp PRIVATE LOTTIEPP_FREESTANDING=1)
-    # freestanding では miniz（ZIP 処理）を除外し、glaze（ヘッダオンリー）のみ使用する
-    target_link_libraries(lottiepp PUBLIC glaze::glaze)
-else()
-    target_link_libraries(lottiepp PUBLIC glaze::glaze miniz::miniz)
-endif()
+target_link_libraries(lottiepp PUBLIC glaze::glaze miniz::miniz)
 target_compile_features(lottiepp PUBLIC ${STD_CPP})
-
-if(ENABLE_FREESTANDING)
-    # --- freestanding 動作確認用スモークテスト（wasm 実行バイナリ、要 node） ---
-    add_executable(lottiepp_smoke
-        test/freestanding_smoke.cpp
-        test/freestanding_runtime.cpp
-    )
-    target_include_directories(lottiepp_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_include_directories(lottiepp_smoke SYSTEM PRIVATE ${LOTTIEPP_WASM_INCLUDES})
-    target_compile_options(lottiepp_smoke PRIVATE ${LOTTIEPP_WASM_FLAGS})
-    target_compile_definitions(lottiepp_smoke PRIVATE LOTTIEPP_FREESTANDING=1)
-    target_compile_features(lottiepp_smoke PRIVATE ${STD_CPP})
-    target_link_libraries(lottiepp_smoke PRIVATE lottiepp ${LOTTIEPP_WASM_LIBCXX})
-    target_link_options(lottiepp_smoke PRIVATE
-        --target=wasm32-unknown-unknown
-        -nostdlib
-        -Wl,--no-entry
-        -Wl,--export=run
-        -Wl,--export-memory
-        -Wl,--export=g_lottieTrapMsg
-        -Wl,--export=g_lottieTrapLen
-    )
-    set_target_properties(lottiepp_smoke PROPERTIES SUFFIX ".wasm")
-
-    find_program(LOTTIEPP_NODE_EXECUTABLE node)
-    if(LOTTIEPP_NODE_EXECUTABLE)
-        enable_testing()
-        add_test(NAME freestanding_smoke
-            COMMAND ${LOTTIEPP_NODE_EXECUTABLE}
-                    ${CMAKE_CURRENT_SOURCE_DIR}/test/freestanding_smoke.js
-                    $<TARGET_FILE:lottiepp_smoke>
-        )
-    endif()
-endif()
 
 # --- lottieproc CLI ---
 if(BUILD_CLI)
@@ -171,6 +88,9 @@ if(BUILD_CLI)
 endif()
 
 if(BUILD_TEST AND Catch2_FOUND)
+    enable_testing()
+    add_subdirectory(test)
+elseif(BUILD_TEST AND ENABLE_WASI_MINIMAL)
     enable_testing()
     add_subdirectory(test)
 elseif(BUILD_TEST AND NOT Catch2_FOUND)

@@ -9,6 +9,36 @@
 #include <unordered_map>
 #include <vector>
 
+/**
+ * @file lottiepp.hpp
+ * @brief ビルドモード設定。
+ *
+ * LOTTIEPP_WASI_MINIMAL が定義されると、ライブラリ内の全ての例外送出
+ * (LOTTIEPP_THROW) が std::abort() に置き換わり、-fno-exceptions でも
+ * ビルドできる「例外なしモード」になる。wasm32-wasip1 / wasm32-emscripten は
+ * WASI/hosted とみなすため自動では有効にならず、WASI 上で
+ * 最小構成を検証する場合は手動で `-DLOTTIEPP_WASI_MINIMAL` を指定する。
+ * 本ライブラリの WASI 対応は wasi-sdk sysroot を用いた wasm32-wasip1 でのビルドを
+ * 想定（wasm3 等で実行可能）。`<iostream>` / `<fstream>` は wasip1 では WASI 経由で
+ * 利用可能なため無効化しない。
+ */
+#if !defined(LOTTIEPP_WASI_MINIMAL) && defined(__wasm__) && !defined(__wasi__) && !defined(__EMSCRIPTEN__)
+#  define LOTTIEPP_WASI_MINIMAL 1
+#endif
+
+#ifndef LOTTIEPP_WASI_MINIMAL
+#  include <stdexcept>
+#  define LOTTIEPP_THROW(msg)     throw std::runtime_error(msg)
+#  define LOTTIEPP_THROW_ARG(msg) throw std::invalid_argument(msg)
+#else
+#  include <cstdlib>
+namespace lottiepp::detail {
+[[noreturn]] inline void fail() noexcept { std::abort(); }
+} // namespace lottiepp::detail
+#  define LOTTIEPP_THROW(msg)     ::lottiepp::detail::fail()
+#  define LOTTIEPP_THROW_ARG(msg) ::lottiepp::detail::fail()
+#endif
+
 namespace lottiepp {
 
 // Lottie の多様な（型が不定な）部分木（シェイプ、キーフレーム等）を保持する動的 JSON ノード
@@ -341,9 +371,6 @@ void addEffect(Layer& layer, const json& effect);
  */
 std::optional<Rgb> parseHexColor(std::string_view hex);
 
-// FREESTANDING ビルドではファイル I/O（load/save、.lottie ZIP 処理）は提供されない。
-// メモリ上の parse / dump 系 API のみ利用できる。
-#ifndef LOTTIEPP_FREESTANDING
 /**
  * @brief Lottie ドキュメントを読み込む（.json または .lottie）
  * @param path 入力ファイルのパス（拡張子で形式を判定）
@@ -357,7 +384,6 @@ Document load(const std::string& path);
  * @param path 出力ファイルのパス（拡張子で形式を判定）
  */
 void save(const Document& doc, const std::string& path);
-#endif  // LOTTIEPP_FREESTANDING
 
 /**
  * @brief Document を JSON 文字列にシリアライズする

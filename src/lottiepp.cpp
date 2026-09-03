@@ -1,11 +1,9 @@
 #include "lottiepp.hpp"
 
-#ifndef LOTTIEPP_FREESTANDING
 #include "miniz.h"
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
-#endif
 
 #include <glaze/json/prettify.hpp>
 
@@ -17,66 +15,9 @@
 
 namespace lottiepp {
 
-#ifdef LOTTIEPP_FREESTANDING
 namespace detail {
-// トラップ理由のデバッグ用エクスポート（スモークテストで node から読む）
-extern "C" {
-const char* g_lottieTrapMsg = nullptr;
-int         g_lottieTrapLen = 0;
+using ::std::to_string;
 }
-
-// freestanding 環境では例外が使えないため、エラー時は wasm トラップで停止する
-[[noreturn]] inline void throwAbort(const std::string& msg) noexcept {
-  g_lottieTrapMsg = msg.c_str();  // デバッグ用: トラップ後にホスト側から参照できる
-  g_lottieTrapLen = static_cast<int>(msg.size());
-  __builtin_trap();
-}
-
-// std::to_string の代替（libc 非依存）。整数は自前の 10 進変換、浮動小数は glaze のシリアライザ（最短ラウンドトリップ表現）を利用する
-template<typename T>
-  requires std::is_integral_v<T>
-inline std::string to_string(T v) {
-  char        buf[24];
-  char* const end = buf + sizeof(buf);
-  char*       p   = end;
-  // 10 進変換（負数は絶対値に直してから処理する）
-  using U         = std::make_unsigned_t<T>;
-  const bool neg  = v < 0;
-  U           u   = neg ? static_cast<U>(0) - static_cast<U>(v) : static_cast<U>(v);
-  do {
-    *--p = static_cast<char>('0' + static_cast<int>(u % 10));
-    u /= 10;
-  } while (u != 0);
-  if (neg) {
-    *--p = '-';
-  }
-  return std::string(p, static_cast<std::size_t>(end - p));
-}
-
-inline std::string to_string(double v) {
-  const json  n = v;
-  std::string s;
-  if (glz::write<glz::opts{.error_on_unknown_keys = false, .prettify = false}>(n, s)) {
-    throwAbort("failed to serialize number");
-  }
-  return s;
-}
-
-inline std::string to_string(float v) {
-  return to_string(static_cast<double>(v));
-}
-}  // namespace detail
-
-#define LOTTIEPP_THROW(msg)     ::lottiepp::detail::throwAbort(msg)
-#define LOTTIEPP_THROW_ARG(msg) ::lottiepp::detail::throwAbort(msg)
-#else
-namespace detail {
-using ::std::to_string;  // std::to_string への転送（ホスト環境ビルド）
-}
-
-#define LOTTIEPP_THROW(msg)     throw std::runtime_error(msg)
-#define LOTTIEPP_THROW_ARG(msg) throw std::invalid_argument(msg)
-#endif
 
 namespace {
 
@@ -97,7 +38,6 @@ constexpr glz::opts kReadOpts{.error_on_unknown_keys = false, .skip_null_members
 // 書き出し時のオプション：プリティ化は行わず、上記と同様の未知キー扱いとする
 constexpr glz::opts kWriteOpts{.error_on_unknown_keys = false, .skip_null_members = true, .prettify = false};
 
-#ifndef LOTTIEPP_FREESTANDING
 /**
  * @brief ファイル内容をバイナリで全読み込みする
  * @param path 読み込むファイルのパス
@@ -153,7 +93,6 @@ std::string extensionOf(const std::string& path) {
   }
   return toLower(path.substr(pos));
 }
-#endif  // LOTTIEPP_FREESTANDING
 
 /**
  * @brief 1 桁の 16 進数字を数値に変換する
@@ -603,7 +542,6 @@ bool replaceTextInLayer(Layer& layer, std::string_view layerName, std::string_vi
   return found;
 }
 
-#ifndef LOTTIEPP_FREESTANDING
 /**
  * @brief .lottie(zip) 内から最適なアニメーション JSON を抽出する
  * @details ファイル名のスコアリングにより、最も妥当な JSON を 1 つ選択する。
@@ -707,7 +645,6 @@ void writeLottieZip(const Document& doc, const std::string& path) {
   // explicit end (RAII will also end on scope exit)
   mz_zip_writer_end(&zip);
 }
-#endif  // LOTTIEPP_FREESTANDING
 
 }  // namespace
 
@@ -1161,7 +1098,6 @@ std::string dumpPretty(const Document& doc) {
   return glz::prettify_json(dump(doc));
 }
 
-#ifndef LOTTIEPP_FREESTANDING
 /**
  * @brief パスから Document を読み込む（.json または .lottie/.zip）
  * @param path 入力ファイルのパス
@@ -1191,7 +1127,6 @@ void save(const Document& doc, const std::string& path) {
   }
   writeFile(path, dumpPretty(doc));
 }
-#endif  // LOTTIEPP_FREESTANDING
 
 /**
  * @brief 名前でレイヤを削除する（トップレベルおよびアセット内のプリコンポジション）
