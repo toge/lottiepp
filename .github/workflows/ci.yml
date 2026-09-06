@@ -328,7 +328,7 @@ jobs:
           name: coverage-info
           path: coverage.info
 
-  linux-wasi-minimal:
+  linux-wasi:
     runs-on: ubuntu-latest
     container: fedora:44
 
@@ -336,7 +336,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install build tools
-        run: dnf install -y cmake ninja-build git curl zip unzip tar python3 gcc-c++ file
+        run: dnf install -y cmake ninja-build git curl zip unzip tar python3 gcc-c++ file wasmtime
 
       - name: Cache wasi-sdk
         uses: actions/cache@v4
@@ -372,33 +372,30 @@ jobs:
             ~/vcpkg/bootstrap-vcpkg.sh
           fi
 
-      - name: Build WASI minimal with vcpkg + wasi-sdk (wasm32-wasip1, no single header)
+      - name: Build WASI with vcpkg + wasi-sdk (wasm32-wasip1)
         run: |
           cmake -B build -S . -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE=$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_TARGET_TRIPLET=wasm32-wasip1 \
             -DVCPKG_OVERLAY_TRIPLETS=$PWD/triplets \
-            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk-p1.cmake \
-            -DENABLE_WASI_MINIMAL=ON
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk-p1.cmake
           cmake --build build
-          file build/test/smoke_wasi_minimal | grep -q WebAssembly
+          file build/test/smoke | grep -q WebAssembly
 
-      - name: Verify single headers compile (hosted & WASI minimal wasm)
+      - name: Run smoke test with wasmtime
+        run: |
+          wasmtime run build/test/smoke
+
+      - name: Verify single header compiles (hosted & WASI wasm)
         run: |
           GLAZE_INC=build/vcpkg_installed/wasm32-wasip1/include
-          /opt/wasi-sdk/bin/clang++ -std=c++23 -I src -I $GLAZE_INC -DLOTTIEPP_WASI_MINIMAL=1 -c test/smoke_wasi_minimal.cpp -o /tmp/test_wasi_minimal_wasm.o
-          file /tmp/test_wasi_minimal_wasm.o | grep -q WebAssembly
-          /opt/wasi-sdk/bin/clang++ -std=c++23 -I src -I $GLAZE_INC -c -x c++ - -o /tmp/single_wasm.o <<'EOF'
+          # WASI build (exceptions disabled by CMake)
+          /opt/wasi-sdk/bin/clang++ -std=c++23 -fno-exceptions -I src -I $GLAZE_INC -c -x c++ - -o /tmp/single_wasm.o <<'EOF'
           #include "lottiepp.hpp"
           int main(){return 0;}
           EOF
           file /tmp/single_wasm.o | grep -q WebAssembly
-          /opt/wasi-sdk/bin/clang++ -std=c++23 -I src -I $GLAZE_INC -DLOTTIEPP_WASI_MINIMAL=1 -c -x c++ - -o /tmp/single_wasi_flag_wasm.o <<'EOF'
-          #include "lottiepp.hpp"
-          int main(){return 0;}
-          EOF
-          file /tmp/single_wasi_flag_wasm.o | grep -q WebAssembly
-          g++ -std=c++23 -I src -I $GLAZE_INC -DLOTTIEPP_WASI_MINIMAL=1 -c test/smoke_wasi_minimal.cpp -o /tmp/test_wasi_minimal.o
+          # Hosted build (exceptions enabled)
           g++ -std=c++23 -I src -I $GLAZE_INC -c -x c++ - -o /tmp/single_hosted.o <<'EOF'
           #include "lottiepp.hpp"
           int main(){return 0;}
