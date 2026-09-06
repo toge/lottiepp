@@ -44,6 +44,11 @@ if(ipo_supported)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
+# WASI では例外を無効化する（frozenchars と同様のアプローチ）
+if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+    add_compile_options(-fno-exceptions)
+endif()
+
 ## other flag
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
