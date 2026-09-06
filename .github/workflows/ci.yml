@@ -328,7 +328,7 @@ jobs:
           name: coverage-info
           path: coverage.info
 
-  linux-wasi:
+  linux-wasip1:
     runs-on: ubuntu-latest
     container: fedora:44
 
@@ -337,14 +337,6 @@ jobs:
 
       - name: Install build tools
         run: dnf install -y cmake ninja-build git curl zip unzip tar python3 gcc-c++ file
-
-      - name: Install wasmtime
-        run: |
-          curl -L https://github.com/bytecodealliance/wasmtime/releases/download/v34.0.0/wasmtime-v34.0.0-x86_64-linux.tar.xz \
-            -o /tmp/wasmtime.tar.xz
-          tar -xf /tmp/wasmtime.tar.xz -C /tmp
-          cp /tmp/wasmtime-v34.0.0-x86_64-linux/wasmtime /usr/local/bin/
-          wasmtime --version
 
       - name: Cache wasi-sdk
         uses: actions/cache@v4
@@ -363,15 +355,24 @@ jobs:
           /opt/wasi-sdk/bin/clang --version
           /opt/wasi-sdk/bin/clang++ --version
 
+      - name: Install wasmtime
+        run: |
+          WASMTIME_VERSION=$(curl -s https://api.github.com/repos/bytecodealliance/wasmtime/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          curl -sSL "https://github.com/bytecodealliance/wasmtime/releases/latest/download/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz" -o /tmp/wasmtime.tar.xz
+          tar -xf /tmp/wasmtime.tar.xz -C /tmp
+          WASMTIME_DIR="/tmp/wasmtime-v${WASMTIME_VERSION}-x86_64-linux"
+          echo "${WASMTIME_DIR}" >> $GITHUB_PATH
+          "${WASMTIME_DIR}/wasmtime" --version
+
       - name: Restore vcpkg cache
         uses: actions/cache@v4
         with:
           path: |
             ~/vcpkg
             build/vcpkg_installed
-          key: ${{ runner.os }}-wasi-vcpkg-${{ hashFiles('vcpkg.json') }}
+          key: ${{ runner.os }}-wasip1-vcpkg-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            ${{ runner.os }}-wasi-vcpkg-
+            ${{ runner.os }}-wasip1-vcpkg-
 
       - name: Install vcpkg
         run: |
@@ -399,6 +400,89 @@ jobs:
           GLAZE_INC=build/vcpkg_installed/wasm32-wasip1/include
           # WASI build (exceptions disabled by CMake)
           /opt/wasi-sdk/bin/clang++ -std=c++23 -fno-exceptions -I src -I $GLAZE_INC -c -x c++ - -o /tmp/single_wasm.o <<'EOF'
+          #include "lottiepp.hpp"
+          int main(){return 0;}
+          EOF
+          file /tmp/single_wasm.o | grep -q WebAssembly
+          # Hosted build (exceptions enabled)
+          g++ -std=c++23 -I src -I $GLAZE_INC -c -x c++ - -o /tmp/single_hosted.o <<'EOF'
+          #include "lottiepp.hpp"
+          int main(){return 0;}
+          EOF
+          file /tmp/single_hosted.o | grep -q ELF
+
+  linux-wasip2:
+    runs-on: ubuntu-latest
+    container: fedora:44
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: dnf install -y cmake ninja-build git curl zip unzip tar python3 gcc-c++ file
+
+      - name: Cache wasi-sdk
+        uses: actions/cache@v4
+        with:
+          path: /opt/wasi-sdk
+          key: wasi-sdk-34.0
+
+      - name: Install wasi-sdk
+        run: |
+          if [ ! -d /opt/wasi-sdk/bin/clang ]; then
+            curl -L https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz \
+              -o /tmp/wasi-sdk.tar.gz
+            mkdir -p /opt/wasi-sdk
+            tar -xzf /tmp/wasi-sdk.tar.gz -C /opt/wasi-sdk --strip-components=1
+          fi
+          /opt/wasi-sdk/bin/clang --version
+          /opt/wasi-sdk/bin/clang++ --version
+
+      - name: Install wasmtime
+        run: |
+          WASMTIME_VERSION=$(curl -s https://api.github.com/repos/bytecodealliance/wasmtime/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          curl -sSL "https://github.com/bytecodealliance/wasmtime/releases/latest/download/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz" -o /tmp/wasmtime.tar.xz
+          tar -xf /tmp/wasmtime.tar.xz -C /tmp
+          WASMTIME_DIR="/tmp/wasmtime-v${WASMTIME_VERSION}-x86_64-linux"
+          echo "${WASMTIME_DIR}" >> $GITHUB_PATH
+          "${WASMTIME_DIR}/wasmtime" --version
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/vcpkg
+            build/vcpkg_installed
+          key: ${{ runner.os }}-wasip2-vcpkg-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            ${{ runner.os }}-wasip2-vcpkg-
+
+      - name: Install vcpkg
+        run: |
+          if [ ! -d ~/vcpkg ]; then
+            git clone https://github.com/microsoft/vcpkg.git ~/vcpkg
+            ~/vcpkg/bootstrap-vcpkg.sh
+          fi
+
+      - name: Build WASI with vcpkg + wasi-sdk (wasm32-wasip2)
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_TARGET_TRIPLET=wasm32-wasip2 \
+            -DVCPKG_OVERLAY_TRIPLETS=$PWD/triplets \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk-p2.cmake
+          cmake --build build
+          file build/test/smoke | grep -q WebAssembly
+
+      - name: Run smoke test with wasmtime
+        run: |
+          wasmtime run build/test/smoke
+
+      - name: Verify single header compiles (hosted & WASI wasm2)
+        run: |
+          GLAZE_INC=build/vcpkg_installed/wasm32-wasip2/include
+          # WASI build (exceptions disabled by CMake)
+          /opt/wasi-sdk/bin/clang++ --target=wasm32-wasip2 -std=c++23 -fno-exceptions -I src -I $GLAZE_INC -c -x c++ - -o /tmp/single_wasm.o <<'EOF'
           #include "lottiepp.hpp"
           int main(){return 0;}
           EOF
