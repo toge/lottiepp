@@ -61,8 +61,16 @@ int main(int argc, char** argv) {
     }
   }
 
-  auto doc = plot({s1, s2}, opt);
-  lottiepp::save(doc, argv[1]);
+  auto doc_result = plot({s1, s2}, opt);
+  if (!doc_result) {
+    std::cerr << "error: " << doc_result.error() << "\n";
+    return 1;
+  }
+  std::string save_err;
+  if (!lottiepp::save(*doc_result, argv[1], save_err)) {
+    std::cerr << "error: " << save_err << "\n";
+    return 1;
+  }
   std::cout << "wrote " << argv[1] << " (" << ((opt.chartType == ChartType::Bar) ? "bar" : "line") << ")\n";
   return 0;
 }

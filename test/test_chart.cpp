@@ -50,8 +50,9 @@ TEST_CASE("plot (grow) embeds a flat valid trim path") {
   opt.frameRate = 60.0;
   opt.duration  = 2.0;  // op = 120 フレーム
 
-  Document doc;
-  REQUIRE_NOTHROW(doc = chart::plot({s}, opt));
+  auto doc_result = chart::plot({s}, opt);
+  REQUIRE(doc_result.has_value());
+  Document& doc = *doc_result;
 
   // grow 有効時は系列ごとに 1 つの tm ノードが埋め込まれる
   const auto trims = collectTrimNodes(doc);
@@ -79,10 +80,16 @@ TEST_CASE("plot (grow) embeds a flat valid trim path") {
   REQUIRE(kf[1]["s"][0].as<double>() == Catch::Approx(100.0));
 
   // 生成ノードはシリアライズ → 再解析のラウンドトリップを通ること
-  REQUIRE_NOTHROW(lottiepp::parseJson(dumpJson(trim)));
+  auto dump_result = lottiepp::dumpJson(trim);
+  REQUIRE(dump_result.has_value());
+  auto parse_result = lottiepp::parseJson(*dump_result);
+  REQUIRE(parse_result.has_value());
 
   // ドキュメント全体もラウンドトリップを通ること
-  REQUIRE_NOTHROW(parse(dump(doc)));
+  auto doc_dump = dump(doc);
+  REQUIRE(doc_dump.has_value());
+  auto doc_parse = parse(*doc_dump);
+  REQUIRE(doc_parse.has_value());
 }
 
 TEST_CASE("plot (no grow) has no trim path") {
@@ -93,9 +100,29 @@ TEST_CASE("plot (no grow) has no trim path") {
   s.data = {{0, 1.0}, {1, 2.0}};
   s.grow = false;
 
-  Document doc;
-  REQUIRE_NOTHROW(doc = chart::plot({s}, chart::ChartOptions{}));
-  REQUIRE(collectTrimNodes(doc).empty());
+  auto doc_result = chart::plot({s}, chart::ChartOptions{});
+  REQUIRE(doc_result.has_value());
+  REQUIRE(collectTrimNodes(*doc_result).empty());
+}
+
+TEST_CASE("plot returns unexpected on empty series") {
+  using namespace lottiepp;
+
+  auto result = chart::plot({}, chart::ChartOptions{});
+  REQUIRE_FALSE(result.has_value());
+  REQUIRE_FALSE(result.error().empty());
+}
+
+TEST_CASE("plot returns unexpected on series with insufficient points") {
+  using namespace lottiepp;
+
+  chart::Series s;
+  s.name = "line";
+  s.data = {{0, 1.0}};  // line needs >= 2 points
+
+  auto result = chart::plot({s}, chart::ChartOptions{});
+  REQUIRE_FALSE(result.has_value());
+  REQUIRE_FALSE(result.error().empty());
 }
 
 #endif  // ENABLE_CHART

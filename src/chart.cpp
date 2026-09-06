@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <expected>
 
 namespace lottiepp::chart {
 
@@ -26,13 +27,22 @@ namespace {
  */
 json makeLinePath(double x1, double y1, double x2, double y2) {
   if (!std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(x2) || !std::isfinite(y2)) {
-    LOTTIEPP_THROW_ARG("makeLinePath: coordinates must be finite");
+    ::lottiepp::fail("makeLinePath: coordinates must be finite");
   }
-  json node = parseJson("{\"ty\":\"sh\",\"nm\":\"line\",\"ks\":{\"a\":0,\"k\":{}}}");
-  node["ks"]["k"] = parseJson("{\"i\":[],\"o\":[],\"v\":[],\"c\":false}");
-  static const json kZeroVec = parseJson("[0,0]");
+  auto node_result = parseJson("{\"ty\":\"sh\",\"nm\":\"line\",\"ks\":{\"a\":0,\"k\":{}}}");
+  if (!node_result) ::lottiepp::fail(node_result.error().c_str());
+  json node = std::move(*node_result);
+  auto k_result = parseJson("{\"i\":[],\"o\":[],\"v\":[],\"c\":false}");
+  if (!k_result) ::lottiepp::fail(k_result.error().c_str());
+  node["ks"]["k"] = std::move(*k_result);
+  static const json kZeroVec = [] {
+    auto r = parseJson("[0,0]");
+    return std::move(*r);
+  }();
   auto push = [&](double x, double y) {
-    node["ks"]["k"]["v"].get_array().push_back(parseJson("[" + std::to_string(x) + "," + std::to_string(y) + "]"));
+    auto point = parseJson("[" + std::to_string(x) + "," + std::to_string(y) + "]");
+    if (!point) ::lottiepp::fail(point.error().c_str());
+    node["ks"]["k"]["v"].get_array().push_back(std::move(*point));
     node["ks"]["k"]["i"].get_array().push_back(kZeroVec);
     node["ks"]["k"]["o"].get_array().push_back(kZeroVec);
   };
@@ -49,12 +59,14 @@ json makeLinePath(double x1, double y1, double x2, double y2) {
  */
 json makeEllipseShape(double cx, double cy, double size) {
   if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(size)) {
-    LOTTIEPP_THROW_ARG("makeEllipseShape: coordinates/size must be finite");
+    ::lottiepp::fail("makeEllipseShape: coordinates/size must be finite");
   }
-  return parseJson(
+  auto result = parseJson(
       "{\"ty\":\"el\",\"nm\":\"dot\",\"p\":{\"a\":0,\"k\":[" + std::to_string(cx) + "," +
       std::to_string(cy) + "]},\"s\":{\"a\":0,\"k\":[" + std::to_string(size) + "," +
       std::to_string(size) + "]}}");
+  if (!result) ::lottiepp::fail(result.error().c_str());
+  return std::move(*result);
 }
 
 /**
@@ -83,13 +95,16 @@ std::string jsonEscape(std::string_view s) {
  * @return  gr（グループ）の JSON ノード
  */
 json makeDotGroup(double cx, double cy, double size, std::string_view colorHex) {
-  json g = parseJson("{\"ty\":\"gr\",\"nm\":\"dot\",\"it\":[]}");
+  auto g_result = parseJson("{\"ty\":\"gr\",\"nm\":\"dot\",\"it\":[]}");
+  if (!g_result) ::lottiepp::fail(g_result.error().c_str());
+  json g = std::move(*g_result);
   g["it"].get_array().push_back(makeEllipseShape(cx, cy, size));
   g["it"].get_array().push_back(makeFill(colorHex, 100.0));
-  g["it"].get_array().push_back(
-      parseJson("{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
-                "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},"
-                "\"o\":{\"a\":0,\"k\":100}}"));
+  auto tr_result = parseJson("{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
+                             "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},"
+                             "\"o\":{\"a\":0,\"k\":100}}");
+  if (!tr_result) ::lottiepp::fail(tr_result.error().c_str());
+  g["it"].get_array().push_back(std::move(*tr_result));
   return g;
 }
 
@@ -107,7 +122,7 @@ Layer makeTextLayer(std::string_view text, double x, double y, double size,
                     std::string_view colorHex, double op, const std::string& name) {
   if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(size) ||
       !std::isfinite(op) || size <= 0.0 || op <= 0.0) {
-    LOTTIEPP_THROW_ARG("makeTextLayer: x/y/size/op must be finite and size/op must be positive");
+    ::lottiepp::fail("makeTextLayer: x/y/size/op must be finite and size/op must be positive");
   }
   Layer l;
   l.ty = 5;
@@ -129,14 +144,15 @@ Layer makeTextLayer(std::string_view text, double x, double y, double size,
                                std::to_string(c->b) + ",1]")
                             : "[1,1,1,1]";
 
-  json doc = parseJson(
+  auto doc_result = parseJson(
       "{\"s\":{\"s\":" + std::to_string(size) +
       ",\"f\":\"sans\",\"t\":\"" + jsonEscape(text) +
       "\",\"j\":2,\"tr\":0,\"lh\":" + std::to_string(size * 1.2) +
       ",\"ls\":0,\"fc\":" + col + "}}");
+  if (!doc_result) ::lottiepp::fail(doc_result.error().c_str());
   Text t;
   TextData td;
-  td.k = doc;
+  td.k = std::move(*doc_result);
   t.d = td;
   l.t = t;
 
@@ -152,11 +168,18 @@ Layer makeTextLayer(std::string_view text, double x, double y, double size,
  */
 json makeAreaPath(const std::vector<double>& xs, const std::vector<double>& ys,
                   double y0) {
-  json node = parseJson(
+  auto node_result = parseJson(
       "{\"ty\":\"sh\",\"nm\":\"area\",\"ks\":{\"a\":0,\"k\":{\"i\":[],\"o\":[],\"v\":[],\"c\":true}}}");
-  static const json kZeroVec = parseJson("[0,0]");
+  if (!node_result) ::lottiepp::fail(node_result.error().c_str());
+  json node = std::move(*node_result);
+  static const json kZeroVec = [] {
+    auto r = parseJson("[0,0]");
+    return std::move(*r);
+  }();
   auto push = [&](double x, double y) {
-    node["ks"]["k"]["v"].get_array().push_back(parseJson("[" + std::to_string(x) + "," + std::to_string(y) + "]"));
+    auto point = parseJson("[" + std::to_string(x) + "," + std::to_string(y) + "]");
+    if (!point) ::lottiepp::fail(point.error().c_str());
+    node["ks"]["k"]["v"].get_array().push_back(std::move(*point));
     node["ks"]["k"]["i"].get_array().push_back(kZeroVec);
     node["ks"]["k"]["o"].get_array().push_back(kZeroVec);
   };
@@ -173,12 +196,20 @@ json makeAreaPath(const std::vector<double>& xs, const std::vector<double>& ys,
  * @return    sh（シェイプ）の JSON ノード、c=false（開パス）
  */
 json makePolyline(const std::vector<double>& xs, const std::vector<double>& ys) {
-  json node = parseJson("{\"ty\":\"sh\",\"nm\":\"line\",\"ks\":{\"a\":0,\"k\":{}}}");
-  node["ks"]["k"] = parseJson("{\"i\":[],\"o\":[],\"v\":[],\"c\":false}");
-  static const json kZeroVec = parseJson("[0,0]");
+  auto node_result = parseJson("{\"ty\":\"sh\",\"nm\":\"line\",\"ks\":{\"a\":0,\"k\":{}}}");
+  if (!node_result) ::lottiepp::fail(node_result.error().c_str());
+  json node = std::move(*node_result);
+  auto k_result = parseJson("{\"i\":[],\"o\":[],\"v\":[],\"c\":false}");
+  if (!k_result) ::lottiepp::fail(k_result.error().c_str());
+  node["ks"]["k"] = std::move(*k_result);
+  static const json kZeroVec = [] {
+    auto r = parseJson("[0,0]");
+    return std::move(*r);
+  }();
   for (std::size_t i = 0; i < xs.size(); ++i) {
-    node["ks"]["k"]["v"].get_array().push_back(
-        parseJson("[" + std::to_string(xs[i]) + "," + std::to_string(ys[i]) + "]"));
+    auto point = parseJson("[" + std::to_string(xs[i]) + "," + std::to_string(ys[i]) + "]");
+    if (!point) ::lottiepp::fail(point.error().c_str());
+    node["ks"]["k"]["v"].get_array().push_back(std::move(*point));
     node["ks"]["k"]["i"].get_array().push_back(kZeroVec);
     node["ks"]["k"]["o"].get_array().push_back(kZeroVec);
   }
@@ -194,19 +225,21 @@ json makePolyline(const std::vector<double>& xs, const std::vector<double>& ys) 
  */
 json makeGrowingTrim(double op) {
   if (!std::isfinite(op) || !(op > 0.0)) {
-    LOTTIEPP_THROW_ARG("makeGrowingTrim: op must be finite and positive");
+    ::lottiepp::fail("makeGrowingTrim: op must be finite and positive");
   }
   const std::string kf =
       "[{\"i\":{\"x\":[0.4],\"y\":[1]},\"o\":{\"x\":[0.6],\"y\":[0]},\"t\":0,\"s\":[0]},"
       "{\"t\":" +
       std::to_string(op) + ",\"s\":[100]}]";
-  return parseJson("{\"ty\":\"tm\","
-                   "\"s\":{\"a\":0,\"k\":0},"
-                   "\"e\":{\"a\":1,\"k\":" +
-                   kf +
-                   "},"
-                   "\"o\":{\"a\":0,\"k\":0},"
-                   "\"m\":1}");
+  auto result = parseJson("{\"ty\":\"tm\","
+                          "\"s\":{\"a\":0,\"k\":0},"
+                          "\"e\":{\"a\":1,\"k\":" +
+                          kf +
+                          "},"
+                          "\"o\":{\"a\":0,\"k\":0},"
+                          "\"m\":1}");
+  if (!result) ::lottiepp::fail(result.error().c_str());
+  return std::move(*result);
 }
 
 /**
@@ -215,17 +248,25 @@ json makeGrowingTrim(double op) {
 json makeDashStroke(const Series& s) {
   auto stroke = makeStroke(s.color, 4.0, 100.0);
   if (s.dashArray.size() >= 2) {
-    json arr = parseJson("[]");
-    arr.get_array().push_back(parseJson(
+    auto arr_result = parseJson("[]");
+    if (!arr_result) ::lottiepp::fail(arr_result.error().c_str());
+    json arr = std::move(*arr_result);
+    auto d_result = parseJson(
         "{\"n\":\"d 0\",\"ty\":\"d\",\"v\":{\"a\":0,\"k\":" +
-        std::to_string(s.dashArray[0]) + "}}"));
-    arr.get_array().push_back(parseJson(
+        std::to_string(s.dashArray[0]) + "}}");
+    if (!d_result) ::lottiepp::fail(d_result.error().c_str());
+    arr.get_array().push_back(std::move(*d_result));
+    auto g_result = parseJson(
         "{\"n\":\"g 0\",\"ty\":\"g\",\"v\":{\"a\":0,\"k\":" +
-        std::to_string(s.dashArray[1]) + "}}"));
+        std::to_string(s.dashArray[1]) + "}}");
+    if (!g_result) ::lottiepp::fail(g_result.error().c_str());
+    arr.get_array().push_back(std::move(*g_result));
     if (s.dashArray.size() >= 3) {
-      arr.get_array().push_back(parseJson(
+      auto o_result = parseJson(
           "{\"n\":\"o 0\",\"ty\":\"o\",\"v\":{\"a\":0,\"k\":" +
-          std::to_string(s.dashArray[2]) + "}}"));
+          std::to_string(s.dashArray[2]) + "}}");
+      if (!o_result) ::lottiepp::fail(o_result.error().c_str());
+      arr.get_array().push_back(std::move(*o_result));
     }
     stroke["d"] = arr;
   }
@@ -237,16 +278,21 @@ json makeDashStroke(const Series& s) {
  */
 json makeBarGroup(double barW, double barH, double offX, double offY,
                    const std::string& color) {
-  json group = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
-  group["it"].get_array().push_back(
-      parseJson("{\"ty\":\"rc\",\"nm\":\"rect\",\"p\":{\"a\":0,\"k\":[" +
-                std::to_string(offX) + "," + std::to_string(offY) +
-                "]},\"s\":{\"a\":0,\"k\":[" + std::to_string(barW) + "," +
-                std::to_string(barH) + "]},\"r\":{\"a\":0,\"k\":0}}"));
+  auto group_result = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
+  if (!group_result) ::lottiepp::fail(group_result.error().c_str());
+  json group = std::move(*group_result);
+  auto rc_result = parseJson("{\"ty\":\"rc\",\"nm\":\"rect\",\"p\":{\"a\":0,\"k\":[" +
+                             std::to_string(offX) + "," + std::to_string(offY) +
+                             "]},\"s\":{\"a\":0,\"k\":[" + std::to_string(barW) + "," +
+                             std::to_string(barH) + "]},\"r\":{\"a\":0,\"k\":0}}");
+  if (!rc_result) ::lottiepp::fail(rc_result.error().c_str());
+  group["it"].get_array().push_back(std::move(*rc_result));
   group["it"].get_array().push_back(makeFill(color, 100.0));
-  group["it"].get_array().push_back(parseJson(
+  auto tr_result = parseJson(
       "{\"ty\":\"tr\",\"p\":{\"a\":0,\"k\":[0,0]},\"a\":{\"a\":0,\"k\":[0,0]},"
-      "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},\"o\":{\"a\":0,\"k\":100}}"));
+      "\"s\":{\"a\":0,\"k\":[100,100]},\"r\":{\"a\":0,\"k\":0},\"o\":{\"a\":0,\"k\":100}}");
+  if (!tr_result) ::lottiepp::fail(tr_result.error().c_str());
+  group["it"].get_array().push_back(std::move(*tr_result));
   return group;
 }
 
@@ -254,13 +300,15 @@ json makeBarGroup(double barW, double barH, double offX, double offY,
  * @brief 棒グラフの伸長アニメーション JSON を生成する
  */
 json makeBarScaleAnim(double growDur, double s0x, double s0y, double s1x, double s1y) {
-  return parseJson(
+  auto result = parseJson(
       "{\"a\":1,\"k\":["
       "{\"i\":{\"x\":[0.4,0.4],\"y\":[1,1]},\"o\":{\"x\":[0.6,0.6],\"y\":[0,0]},\"t\":0,\"s\":[" +
       std::to_string(s0x) + "," + std::to_string(s0y) + "]}," +
       "{\"t\":" + std::to_string(growDur) + ",\"s\":[" +
       std::to_string(s1x) + "," + std::to_string(s1y) + "]}"
       "]}");
+  if (!result) ::lottiepp::fail(result.error().c_str());
+  return std::move(*result);
 }
 
 /**
@@ -380,20 +428,20 @@ std::vector<Layer> makeGrid(const ChartOptions& opt, double x0, double y0,
  * @brief 系列群から折れ線グラフの Lottie ドキュメントを生成する
  * @param series  1 つ以上の系列（各系列は 2 点以上）
  * @param opt     描画オプション
- * @return        生成された Document
+ * @return        生成された Document。失敗時は std::unexpected。
  */
-Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
+std::expected<Document, std::string> plot(const std::vector<Series>& series, const ChartOptions& opt) {
   if (series.empty()) {
-    LOTTIEPP_THROW_ARG("plot: at least one series required");
+    return std::unexpected("plot: at least one series required");
   }
 
   // 全系列から Y の最小値・最大値を決定し、正規化の範囲とする
   for (const auto& s : series) {
     if (s.data.empty()) {
-      LOTTIEPP_THROW_ARG("plot: each series needs >= 1 point");
+      return std::unexpected("plot: each series needs >= 1 point");
     }
     if (opt.chartType != ChartType::Bar && s.data.size() < 2) {
-      LOTTIEPP_THROW_ARG("plot: line/scatter chart needs >= 2 points per series");
+      return std::unexpected("plot: line/scatter chart needs >= 2 points per series");
     }
   }
   double minY = series[0].data[0].y;
@@ -489,13 +537,19 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
           Transform ks;
           ks.o = staticProp(100.0);
           ks.r = staticProp(0.0);
-          ks.p = parseJson("{\"a\":0,\"k\":[" + std::to_string(x0) + "," + std::to_string(by) + ",0]}");
-          ks.a = parseJson("{\"a\":0,\"k\":[0,0,0]}");
+          auto p_result = parseJson("{\"a\":0,\"k\":[" + std::to_string(x0) + "," + std::to_string(by) + ",0]}");
+          if (!p_result) ::lottiepp::fail(p_result.error().c_str());
+          ks.p = std::move(*p_result);
+          auto a_result = parseJson("{\"a\":0,\"k\":[0,0,0]}");
+          if (!a_result) ::lottiepp::fail(a_result.error().c_str());
+          ks.a = std::move(*a_result);
           ks.s = makeBarScaleAnim(growDur, 0, 100, 100, 100);
           l.ks = ks;
 
           json group = makeBarGroup(barW, barH, barW / 2.0, 0, s.color);
-          json shapes = parseJson("[]");
+          auto shapes_result = parseJson("[]");
+          if (!shapes_result) ::lottiepp::fail(shapes_result.error().c_str());
+          json shapes = std::move(*shapes_result);
           shapes.get_array().push_back(group);
           l.shapes = shapes;
           serLayers.push_back(l);
@@ -530,13 +584,19 @@ Document plot(const std::vector<Series>& series, const ChartOptions& opt) {
           Transform ks;
           ks.o = staticProp(100.0);
           ks.r = staticProp(0.0);
-          ks.p = parseJson("{\"a\":0,\"k\":[" + std::to_string(bx) + "," + std::to_string(y0) + ",0]}");
-          ks.a = parseJson("{\"a\":0,\"k\":[0,0,0]}");
+          auto p_result = parseJson("{\"a\":0,\"k\":[" + std::to_string(bx) + "," + std::to_string(y0) + ",0]}");
+          if (!p_result) ::lottiepp::fail(p_result.error().c_str());
+          ks.p = std::move(*p_result);
+          auto a_result = parseJson("{\"a\":0,\"k\":[0,0,0]}");
+          if (!a_result) ::lottiepp::fail(a_result.error().c_str());
+          ks.a = std::move(*a_result);
           ks.s = makeBarScaleAnim(growDur, 100, 0, 100, 100);
           l.ks = ks;
 
           json group = makeBarGroup(barW, barH, 0, -barH / 2.0, s.color);
-          json shapes = parseJson("[]");
+          auto shapes_result = parseJson("[]");
+          if (!shapes_result) ::lottiepp::fail(shapes_result.error().c_str());
+          json shapes = std::move(*shapes_result);
           shapes.get_array().push_back(group);
           l.shapes = shapes;
           serLayers.push_back(l);

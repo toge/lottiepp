@@ -14,7 +14,7 @@ TEST_CASE("parseHexColor") {
 }
 
 TEST_CASE("recolor static fill") {
-  auto doc = lottiepp::parse(R"({
+  auto doc_result = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
     "layers": [{
       "ty": 4, "nm": "Shape", "ip": 0, "op": 60, "st": 0,
@@ -24,9 +24,12 @@ TEST_CASE("recolor static fill") {
       }]
     }]
   })");
+  REQUIRE(doc_result.has_value());
+  auto& doc = *doc_result;
 
-  const auto n = lottiepp::recolor(doc, "#ff0000", "#00ff00");
-  REQUIRE(n == 1);
+  auto n = lottiepp::recolor(doc, "#ff0000", "#00ff00");
+  REQUIRE(n.has_value());
+  REQUIRE(*n == 1);
   REQUIRE(doc.layers.size() == 1);
   REQUIRE(doc.layers[0].shapes);
   REQUIRE((*doc.layers[0].shapes)[0]["c"]["k"][0].as<float>() == Catch::Approx(0.0f));
@@ -34,13 +37,15 @@ TEST_CASE("recolor static fill") {
 }
 
 TEST_CASE("replaceText") {
-  auto doc = lottiepp::parse(R"({
+  auto doc_result = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
     "layers": [{
       "ty": 5, "nm": "Title", "ip": 0, "op": 60, "st": 0,
       "t": {"d": {"k": [{"s": {"t": "Hello"}, "t": 0}]}}
     }]
   })");
+  REQUIRE(doc_result.has_value());
+  auto& doc = *doc_result;
 
   REQUIRE(lottiepp::replaceText(doc, "Title", "World"));
   REQUIRE(doc.layers[0].t);
@@ -49,13 +54,15 @@ TEST_CASE("replaceText") {
 }
 
 TEST_CASE("setSpeed scales timing") {
-  auto doc = lottiepp::parse(R"({
+  auto doc_result = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
     "layers": [{
       "ty": 4, "nm": "Shape", "ip": 0, "op": 60, "st": 10,
       "ks": {"o": {"a": 1, "k": [{"t": 0, "s": [100]}, {"t": 60, "s": [0]}]}}
     }]
   })");
+  REQUIRE(doc_result.has_value());
+  auto& doc = *doc_result;
 
   const auto n = lottiepp::setSpeed(doc, 2.0);
   REQUIRE(n >= 3);
@@ -66,7 +73,7 @@ TEST_CASE("setSpeed scales timing") {
 }
 
 TEST_CASE("unknown fields preserved") {
-  auto doc = lottiepp::parse(R"({
+  auto doc_result = lottiepp::parse(R"({
     "fr": 30, "ip": 0, "op": 30, "w": 10, "h": 10,
     "ddd": 0,
     "meta": {"g": "test"},
@@ -76,26 +83,32 @@ TEST_CASE("unknown fields preserved") {
       "shapes": [{"ty": "fl", "c": {"a": 0, "k": [0, 0, 0, 1]}}]
     }]
   })");
+  REQUIRE(doc_result.has_value());
+  auto& doc = *doc_result;
 
   REQUIRE(doc.extra.contains("ddd"));
   REQUIRE(doc.extra.contains("meta"));
   REQUIRE(doc.layers[0].extra.contains("ind"));
 
-  const auto text = lottiepp::dump(doc);
-  auto again = lottiepp::parse(text);
-  REQUIRE(again.extra.contains("ddd"));
-  REQUIRE(again.extra.contains("meta"));
-  REQUIRE(again.layers[0].extra.contains("ind"));
+  auto text_result = lottiepp::dump(doc);
+  REQUIRE(text_result.has_value());
+  auto again = lottiepp::parse(*text_result);
+  REQUIRE(again.has_value());
+  REQUIRE(again->extra.contains("ddd"));
+  REQUIRE(again->extra.contains("meta"));
+  REQUIRE(again->layers[0].extra.contains("ind"));
 }
 
 TEST_CASE("generateVariations") {
-  auto doc = lottiepp::parse(R"({
+  auto doc_result = lottiepp::parse(R"({
     "fr": 30, "ip": 0, "op": 30, "w": 10, "h": 10,
     "layers": [{
       "ty": 4, "nm": "S", "ip": 0, "op": 30, "st": 0,
       "shapes": [{"ty": "fl", "c": {"a": 0, "k": [0, 0, 0, 1]}}]
     }]
   })");
+  REQUIRE(doc_result.has_value());
+  auto& doc = *doc_result;
 
   std::vector<lottiepp::VariationParams> params(2);
   params[0].recolor_to = "#ff0000";
@@ -109,9 +122,11 @@ TEST_CASE("generateVariations") {
 }
 
 TEST_CASE("addShapeLayer builds a valid layer") {
-  auto doc = lottiepp::parse(R"({
+  auto doc_result = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 200, "h": 200, "layers": []
   })");
+  REQUIRE(doc_result.has_value());
+  auto& doc = *doc_result;
 
   lottiepp::ShapeLayerParams p;
   p.name = "Box";
@@ -132,29 +147,37 @@ TEST_CASE("addShapeLayer builds a valid layer") {
   REQUIRE(layer.extra.at("ind").as<int>() == 1);
 
   // ラウンドトリップ後にシェイプが保持されること
-  auto again = lottiepp::parse(lottiepp::dump(doc));
-  REQUIRE(again.layers.size() == 1);
-  const auto& shapes = *again.layers[0].shapes;
+  auto dump_result = lottiepp::dump(doc);
+  REQUIRE(dump_result.has_value());
+  auto again = lottiepp::parse(*dump_result);
+  REQUIRE(again.has_value());
+  REQUIRE(again->layers.size() == 1);
+  const auto& shapes = *again->layers[0].shapes;
   REQUIRE(shapes[0]["ty"].as<std::string>() == "gr");
   REQUIRE(shapes[0]["it"][0]["ty"].as<std::string>() == "rc");
   REQUIRE(shapes[0]["it"][1]["ty"].as<std::string>() == "fl");
   REQUIRE(shapes[0]["it"][1]["c"]["k"][1].as<float>() == Catch::Approx(1.0f));
   // レイヤ位置の反映
-  REQUIRE((*again.layers[0].ks->p)["k"][0].as<double>() == Catch::Approx(50.0));
+  REQUIRE((*again->layers[0].ks->p)["k"][0].as<double>() == Catch::Approx(50.0));
 }
 
 TEST_CASE("addEffect appends to ef") {
-  auto doc = lottiepp::parse(R"({
+  auto doc_result = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 200, "h": 200,
     "layers": [{"ty": 4, "nm": "Target", "ip": 0, "op": 60, "st": 0, "ind": 1, "shapes": []}]
   })");
+  REQUIRE(doc_result.has_value());
+  auto& doc = *doc_result;
 
   auto* layer = lottiepp::findLayer(doc, "Target");
   REQUIRE(layer != nullptr);
   lottiepp::addEffect(*layer, lottiepp::makeGaussianBlur(12.0));
 
-  auto again = lottiepp::parse(lottiepp::dump(doc));
-  auto* l2   = lottiepp::findLayer(again, "Target");
+  auto dump_result = lottiepp::dump(doc);
+  REQUIRE(dump_result.has_value());
+  auto again = lottiepp::parse(*dump_result);
+  REQUIRE(again.has_value());
+  auto* l2   = lottiepp::findLayer(*again, "Target");
   REQUIRE(l2 != nullptr);
   REQUIRE(l2->extra.contains("ef"));
   REQUIRE(l2->extra["ef"].is_array());
@@ -164,7 +187,7 @@ TEST_CASE("addEffect appends to ef") {
 }
 
 TEST_CASE("removeLayer removes by name") {
-  auto doc = lottiepp::parse(R"({
+  auto doc_result = lottiepp::parse(R"({
     "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
     "layers": [
       {"ty": 4, "nm": "Keep", "ip": 0, "op": 60, "st": 0, "shapes": []},
@@ -175,6 +198,8 @@ TEST_CASE("removeLayer removes by name") {
       "layers": [{"ty": 4, "nm": "Drop", "ip": 0, "op": 60, "st": 0, "shapes": []}]
     }]
   })");
+  REQUIRE(doc_result.has_value());
+  auto& doc = *doc_result;
 
   REQUIRE(lottiepp::removeLayer(doc, "Drop"));
   REQUIRE(doc.layers.size() == 1);
@@ -184,9 +209,12 @@ TEST_CASE("removeLayer removes by name") {
   REQUIRE(doc.assets->at(0).layers->empty());
 
   // ラウンドトリップ後も削除が維持される
-  auto again = lottiepp::parse(lottiepp::dump(doc));
-  REQUIRE(again.layers.size() == 1);
-  REQUIRE_FALSE(lottiepp::removeLayer(again, "Missing"));
+  auto dump_result = lottiepp::dump(doc);
+  REQUIRE(dump_result.has_value());
+  auto again = lottiepp::parse(*dump_result);
+  REQUIRE(again.has_value());
+  REQUIRE(again->layers.size() == 1);
+  REQUIRE_FALSE(lottiepp::removeLayer(*again, "Missing"));
 }
 
 TEST_CASE("makeDocument creates empty valid doc") {
@@ -201,9 +229,12 @@ TEST_CASE("makeDocument creates empty valid doc") {
   REQUIRE_FALSE(doc.nm);
 
   // ラウンドトリップで妥当な空ドキュメントとして保存・再解析できる
-  auto again = lottiepp::parse(lottiepp::dump(doc));
-  REQUIRE(again.layers.empty());
-  REQUIRE(again.w.value() == 512);
+  auto dump_result = lottiepp::dump(doc);
+  REQUIRE(dump_result.has_value());
+  auto again = lottiepp::parse(*dump_result);
+  REQUIRE(again.has_value());
+  REQUIRE(again->layers.empty());
+  REQUIRE(again->w.value() == 512);
 }
 
 TEST_CASE("makeDocument respects params") {
@@ -225,8 +256,7 @@ TEST_CASE("makeTrimPath generates a flat valid node") {
   // 過去バグのリグレッション: 生成 JSON の閉じブレースが不足しており、
   // "e" が "s" の内側に、"o" が "e" の内側にネストし、ルートも閉じられていなかったため
   // 内部の parseJson が失敗していた（"index N: expected_comma"）。
-  lottiepp::json trim;
-  REQUIRE_NOTHROW(trim = lottiepp::makeTrimPath(10.0, 90.0, 45.0, true));
+  lottiepp::json trim = lottiepp::makeTrimPath(10.0, 90.0, 45.0, true);
 
   // s / e / o はそれぞれ独立した {"a":0,"k":<値>} プロパティとしてフラットに並ぶこと
   REQUIRE(trim["ty"].as<std::string>() == "tm");
@@ -243,13 +273,40 @@ TEST_CASE("makeTrimPath generates a flat valid node") {
   REQUIRE(trim["m"].as<int>() == 1);
 
   // 非同時モード（m=2）でも同様に妥当なノードを生成すること
-  lottiepp::json trim2;
-  REQUIRE_NOTHROW(trim2 = lottiepp::makeTrimPath(0.0, 50.0, 0.0, false));
-  REQUIRE(trim2["s"]["k"].as<double>() == Catch::Approx(0.0));
-  REQUIRE(trim2["e"]["k"].as<double>() == Catch::Approx(50.0));
-  REQUIRE(trim2["o"]["k"].as<double>() == Catch::Approx(0.0));
-  REQUIRE(trim2["m"].as<int>() == 2);
+  lottiepp::json trim2 = lottiepp::makeTrimPath(0.0, 50.0, 0.0, false);
+  auto s2 = trim2["s"]["k"].as<double>();
+  auto e2 = trim2["e"]["k"].as<double>();
+  auto o2 = trim2["o"]["k"].as<double>();
+  auto m2 = trim2["m"].as<int>();
+  REQUIRE(s2 == Catch::Approx(0.0));
+  REQUIRE(e2 == Catch::Approx(50.0));
+  REQUIRE(o2 == Catch::Approx(0.0));
+  REQUIRE(m2 == 2);
 
   // 生成ノードはシリアライズ → 再解析のラウンドトリップを通ること
-  REQUIRE_NOTHROW(lottiepp::parseJson(lottiepp::dumpJson(trim)));
+  auto dump_result = lottiepp::dumpJson(trim);
+  REQUIRE(dump_result.has_value());
+  auto parse_result = lottiepp::parseJson(*dump_result);
+  REQUIRE(parse_result.has_value());
+}
+
+TEST_CASE("parse returns unexpected on invalid JSON") {
+  auto result = lottiepp::parse("not valid json");
+  REQUIRE_FALSE(result.has_value());
+  REQUIRE_FALSE(result.error().empty());
+}
+
+TEST_CASE("recolor returns unexpected on invalid hex") {
+  auto doc_result = lottiepp::parse(R"({
+    "fr": 60, "ip": 0, "op": 60, "w": 100, "h": 100,
+    "layers": [{
+      "ty": 4, "nm": "Shape", "ip": 0, "op": 60, "st": 0,
+      "shapes": [{"ty": "fl", "c": {"a": 0, "k": [1, 0, 0, 1]}}]
+    }]
+  })");
+  REQUIRE(doc_result.has_value());
+
+  auto recolor_result = lottiepp::recolor(*doc_result, "", "not-a-color");
+  REQUIRE_FALSE(recolor_result.has_value());
+  REQUIRE_FALSE(recolor_result.error().empty());
 }

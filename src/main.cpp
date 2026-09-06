@@ -134,48 +134,53 @@ int main(int argc, char** argv) {
   std::vector<PendingEffect> pendingEffects;  // 追加するエフェクト群
   std::vector<std::string>   removeLayers;    // 削除するレイヤ名群
 
-#ifndef LOTTIEPP_WASI_MINIMAL
-  try {
-#endif
-    // 引数を先頭から順に解析する
-    for (int i = 1; i < argc; ++i) {
+  // エラーを出力して終了するヘルパ
+  auto error = [&](const std::string& msg) -> int {
+    std::cerr << "error: " << msg << "\n";
+    return 1;
+  };
+
+  // 引数を先頭から順に解析する
+  for (int i = 1; i < argc; ++i) {
       const std::string_view arg = argv[i];
-      // 残り引数が n 個未満なら例外を投げるヘルパ
-      auto need = [&](int n) {
+      // 残り引数が n 個未満ならエラーで終了するヘルパ
+      auto need = [&](int n) -> bool {
         if (i + n >= argc) {
-          LOTTIEPP_THROW("missing argument after " + std::string(arg));
+          std::cerr << "error: missing argument after " << arg << "\n";
+          return false;
         }
+        return true;
       };
       if (arg == "-h" || arg == "--help") {
         usage(argv[0]);
         return 0;
       }
       if (arg == "-o" || arg == "--output") {
-        need(1);
+        if (!need(1)) return 1;
         output = argv[++i];
       } else if (arg == "--recolor") {
-        need(1);
+        if (!need(1)) return 1;
         recolorTo = argv[++i];
       } else if (arg == "--from") {
-        need(1);
+        if (!need(1)) return 1;
         recolorFrom = argv[++i];
       } else if (arg == "--text") {
-        need(2);
+        if (!need(2)) return 1;
         textLayer = argv[++i];
         textValue = argv[++i];
       } else if (arg == "--speed") {
-        need(1);
+        if (!need(1)) return 1;
         speed = std::stod(argv[++i]);
       } else if (arg == "--variations") {
-        need(1);
+        if (!need(1)) return 1;
         variations = std::stoi(argv[++i]);
         if (variations < 1) {
-          LOTTIEPP_THROW("--variations must be >= 1");
+          return error("--variations must be >= 1");
         }
       } else if (arg == "--add-shape") {
         // --add-shape <type> <x> <y> <w> <h> <color> <from> <to> [name]
         // 必須 8 引数を順に読み取り、続く引数がオプション（'-' 始まり）でなければ名前とする
-        need(8);
+        if (!need(8)) return 1;
         PendingShape s;
         s.type  = argv[++i];
         s.x     = std::stod(argv[++i]);
@@ -192,7 +197,7 @@ int main(int argc, char** argv) {
         pendingShapes.push_back(std::move(s));
       } else if (arg == "--add-effect") {
         // --add-effect <layer> <type> <value>
-        need(3);
+        if (!need(3)) return 1;
         PendingEffect e;
         e.layer = argv[++i];
         e.type  = argv[++i];
@@ -200,7 +205,7 @@ int main(int argc, char** argv) {
         pendingEffects.push_back(std::move(e));
       } else if (arg == "--remove-layer") {
         // --remove-layer <name>
-        need(1);
+        if (!need(1)) return 1;
         removeLayers.emplace_back(argv[++i]);
       } else if (!arg.empty() && arg[0] == '-') {
         // 未知のオプション
@@ -217,105 +222,112 @@ int main(int argc, char** argv) {
       }
     }
 
-    // 入力・出力がいずれも指定されていなければ利用方法を表示
-    if (input.empty() || output.empty()) {
-      usage(argv[0]);
-      return 1;
-    }
-
-    // 入力ファイルを読み込み Document を構築
-    auto doc = lottiepp::load(input);
-
-    // 新規シェイプレイヤの追加（エフェクトより先に適用して名前解決する）
-    for (auto& s : pendingShapes) {
-      lottiepp::ShapeLayerParams p;
-      // 名前が未指定の場合はシェイプ種別をそのままレイヤ名とする
-      p.name  = s.name.empty() ? s.type : s.name;
-      p.x     = s.x;
-      p.y     = s.y;
-      p.from  = s.from;
-      p.to    = s.to;
-      // 種別に応じたシェイプを生成し、塗りつぶしを追加する
-      if (s.type == "rect") {
-        p.items.push_back(lottiepp::makeRect(s.w, s.h));
-      } else if (s.type == "ellipse") {
-        p.items.push_back(lottiepp::makeEllipse(s.w, s.h));
-      } else {
-        LOTTIEPP_THROW("unknown shape type: " + s.type);
-      }
-      p.items.push_back(lottiepp::makeFill(s.color));
-      lottiepp::addLayer(doc, lottiepp::makeShapeLayer(p));
-      std::cout << "add-shape: " << p.name << "\n";
-    }
-
-    // レイヤへのエフェクト追加（名前で対象レイヤを解決する）
-    for (auto& e : pendingEffects) {
-      auto* layer = lottiepp::findLayer(doc, e.layer);
-      if (!layer) {
-        LOTTIEPP_THROW("layer not found for effect: " + e.layer);
-      }
-      if (e.type == "blur") {
-        lottiepp::addEffect(*layer, lottiepp::makeGaussianBlur(e.value));
-      } else {
-        LOTTIEPP_THROW("unknown effect type: " + e.type);
-      }
-      std::cout << "add-effect: " << e.type << " -> " << e.layer << "\n";
-    }
-
-    // コマンドライン引数からベースパラメータを組み立てる
-    lottiepp::VariationParams base;
-    if (!recolorTo.empty()) {
-      base.recolor_to = recolorTo;
-    }
-    if (!recolorFrom.empty()) {
-      base.recolor_from = recolorFrom;
-    }
-    if (!textLayer.empty()) {
-      base.text_layer = textLayer;
-      base.text_value = textValue;
-    }
-    if (speed) {
-      base.speed = *speed;
-    }
-
-    // --variations が指定された場合は、複数のバリエーションを生成して出力する
-    if (variations > 0) {
-      const auto sets = makeDefaultVariations(variations, base);
-      const auto docs = lottiepp::generateVariations(doc, sets);
-      for (std::size_t i = 0; i < docs.size(); ++i) {
-        const std::string path = stemWithIndex(output, static_cast<int>(i + 1));
-        lottiepp::save(docs[i], path);
-        std::cout << "wrote " << path << "\n";
-      }
-      return 0;
-    }
-
-    // 単一出力の場合：各処理を順に適用する
-    if (base.recolor_to) {
-      const auto n = lottiepp::recolor(doc, base.recolor_from.value_or(""), *base.recolor_to);
-      std::cout << "recolor: " << n << " values\n";
-    }
-    if (base.text_layer && base.text_value) {
-      const bool ok = lottiepp::replaceText(doc, *base.text_layer, *base.text_value);
-      std::cout << "replaceText: " << (ok ? "ok" : "layer not found") << "\n";
-    }
-    if (base.speed) {
-      const auto n = lottiepp::setSpeed(doc, *base.speed);
-      std::cout << "setSpeed: " << n << " fields\n";
-    }
-    // 指定されたレイヤの削除（名前一致）
-    for (auto& name : removeLayers) {
-      const bool ok = lottiepp::removeLayer(doc, name);
-      std::cout << "removeLayer " << name << ": " << (ok ? "ok" : "not found") << "\n";
-    }
-
-    lottiepp::save(doc, output);
-    std::cout << "wrote " << output << "\n";
-    return 0;
-#ifndef LOTTIEPP_WASI_MINIMAL
-  } catch (const std::exception& ex) {
-    std::cerr << "error: " << ex.what() << "\n";
+  // 入力・出力がいずれも指定されていなければ利用方法を表示
+  if (input.empty() || output.empty()) {
+    usage(argv[0]);
     return 1;
   }
-#endif
+
+  // 入力ファイルを読み込み Document を構築
+  auto doc_result = lottiepp::load(input);
+  if (!doc_result) {
+    return error(doc_result.error());
+  }
+  auto& doc = *doc_result;
+
+  // 新規シェイプレイヤの追加（エフェクトより先に適用して名前解決する）
+  for (auto& s : pendingShapes) {
+    lottiepp::ShapeLayerParams p;
+    // 名前が未指定の場合はシェイプ種別をそのままレイヤ名とする
+    p.name  = s.name.empty() ? s.type : s.name;
+    p.x     = s.x;
+    p.y     = s.y;
+    p.from  = s.from;
+    p.to    = s.to;
+    // 種別に応じたシェイプを生成し、塗りつぶしを追加する
+    if (s.type == "rect") {
+      p.items.push_back(lottiepp::makeRect(s.w, s.h));
+    } else if (s.type == "ellipse") {
+      p.items.push_back(lottiepp::makeEllipse(s.w, s.h));
+    } else {
+      return error("unknown shape type: " + s.type);
+    }
+    p.items.push_back(lottiepp::makeFill(s.color));
+    lottiepp::addLayer(doc, lottiepp::makeShapeLayer(p));
+    std::cout << "add-shape: " << p.name << "\n";
+  }
+
+  // レイヤへのエフェクト追加（名前で対象レイヤを解決する）
+  for (auto& e : pendingEffects) {
+    auto* layer = lottiepp::findLayer(doc, e.layer);
+    if (!layer) {
+      return error("layer not found for effect: " + e.layer);
+    }
+    if (e.type == "blur") {
+      lottiepp::addEffect(*layer, lottiepp::makeGaussianBlur(e.value));
+    } else {
+      return error("unknown effect type: " + e.type);
+    }
+    std::cout << "add-effect: " << e.type << " -> " << e.layer << "\n";
+  }
+
+  // コマンドライン引数からベースパラメータを組み立てる
+  lottiepp::VariationParams base;
+  if (!recolorTo.empty()) {
+    base.recolor_to = recolorTo;
+  }
+  if (!recolorFrom.empty()) {
+    base.recolor_from = recolorFrom;
+  }
+  if (!textLayer.empty()) {
+    base.text_layer = textLayer;
+    base.text_value = textValue;
+  }
+  if (speed) {
+    base.speed = *speed;
+  }
+
+  // --variations が指定された場合は、複数のバリエーションを生成して出力する
+  if (variations > 0) {
+    const auto sets = makeDefaultVariations(variations, base);
+    const auto docs = lottiepp::generateVariations(doc, sets);
+    for (std::size_t i = 0; i < docs.size(); ++i) {
+      const std::string path = stemWithIndex(output, static_cast<int>(i + 1));
+      std::string save_err;
+      if (!lottiepp::save(docs[i], path, save_err)) {
+        return error(save_err);
+      }
+      std::cout << "wrote " << path << "\n";
+    }
+    return 0;
+  }
+
+  // 単一出力の場合：各処理を順に適用する
+  if (base.recolor_to) {
+    auto recolor_result = lottiepp::recolor(doc, base.recolor_from.value_or(""), *base.recolor_to);
+    if (!recolor_result) {
+      return error(recolor_result.error());
+    }
+    std::cout << "recolor: " << *recolor_result << " values\n";
+  }
+  if (base.text_layer && base.text_value) {
+    const bool ok = lottiepp::replaceText(doc, *base.text_layer, *base.text_value);
+    std::cout << "replaceText: " << (ok ? "ok" : "layer not found") << "\n";
+  }
+  if (base.speed) {
+    const auto n = lottiepp::setSpeed(doc, *base.speed);
+    std::cout << "setSpeed: " << n << " fields\n";
+  }
+  // 指定されたレイヤの削除（名前一致）
+  for (auto& name : removeLayers) {
+    const bool ok = lottiepp::removeLayer(doc, name);
+    std::cout << "removeLayer " << name << ": " << (ok ? "ok" : "not found") << "\n";
+  }
+
+  std::string save_err;
+  if (!lottiepp::save(doc, output, save_err)) {
+    return error(save_err);
+  }
+  std::cout << "wrote " << output << "\n";
+  return 0;
 }

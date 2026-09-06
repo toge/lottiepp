@@ -4,13 +4,6 @@ project(lottiepp VERSION 0.1.0 LANGUAGES C CXX)
 option(BUILD_TEST "Enable tests" ON)
 option(BUILD_CLI "Build lottieproc CLI" ON)
 option(ENABLE_CHART "Build the chart/plot helper (samples)" ON)
-option(ENABLE_WASI_MINIMAL "Enable WASI minimal (no exceptions) mode - wasi-sdk wasm32-wasip1 assumed" OFF)
-
-if(ENABLE_WASI_MINIMAL)
-    add_compile_definitions(LOTTIEPP_WASI_MINIMAL=1)
-    # 例外なしモード：wasi-sdk でも例外ランタイム不要でリンク可能にする
-    add_compile_options(-fno-exceptions)
-endif()
 
 set(STD_CPP cxx_std_23)
 
@@ -65,17 +58,15 @@ find_package(glaze REQUIRED CONFIG)
 find_package(miniz REQUIRED CONFIG)
 find_package(Catch2 CONFIG QUIET)
 
-# --- lottiepp library (static) ---
-add_library(lottiepp STATIC
-    src/lottiepp.cpp
-)
+# --- lottiepp library (header-only) ---
+add_library(lottiepp INTERFACE)
 target_include_directories(lottiepp
-    PUBLIC
+    INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_link_libraries(lottiepp PUBLIC glaze::glaze miniz::miniz)
-target_compile_features(lottiepp PUBLIC ${STD_CPP})
+target_link_libraries(lottiepp INTERFACE glaze::glaze miniz::miniz)
+target_compile_features(lottiepp INTERFACE ${STD_CPP})
 
 # --- lottieproc CLI ---
 if(BUILD_CLI)
@@ -84,23 +75,20 @@ if(BUILD_CLI)
     target_compile_features(lottieproc PRIVATE ${STD_CPP})
 endif()
 
-if(BUILD_TEST AND Catch2_FOUND)
+if(BUILD_TEST)
     enable_testing()
     add_subdirectory(test)
-elseif(BUILD_TEST AND ENABLE_WASI_MINIMAL)
-    enable_testing()
-    add_subdirectory(test)
-elseif(BUILD_TEST AND NOT Catch2_FOUND)
-    message(STATUS "Catch2 not found; tests disabled")
 endif()
 
 # --- chart/plot helper ---
 if(ENABLE_CHART)
-    target_sources(lottiepp PRIVATE src/chart.cpp)
-    target_compile_definitions(lottiepp PRIVATE ENABLE_CHART=1)
+    add_library(lottiepp_chart STATIC src/chart.cpp)
+    target_link_libraries(lottiepp_chart PUBLIC lottiepp)
+    target_compile_definitions(lottiepp_chart PRIVATE ENABLE_CHART=1)
+    target_compile_features(lottiepp_chart PRIVATE ${STD_CPP})
     # サンプル実行ファイル
     add_executable(line_chart_grow samples/line_chart_grow.cpp)
-    target_link_libraries(line_chart_grow PRIVATE lottiepp)
+    target_link_libraries(line_chart_grow PRIVATE lottiepp_chart)
     target_compile_features(line_chart_grow PRIVATE ${STD_CPP})
 endif()
 

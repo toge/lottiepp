@@ -12,6 +12,7 @@
 #include <lottiepp.hpp>
 
 #include <cmath>
+#include <expected>
 #include <string>
 #include <vector>
 
@@ -78,8 +79,8 @@ struct ChartOptions {
  * @brief 系列群から折れ線グラフの Lottie ドキュメントを生成する
  * @param series  1 つ以上の系列
  * @param opt     描画オプション（デフォルト値あり）
- * @return        生成された Document（save / dump で出力可能）
+ * @return        生成された Document（save / dump で出力可能）。失敗時は std::unexpected。
  */
-Document plot(const std::vector<Series>& series, const ChartOptions& opt = {});
+std::expected<Document, std::string> plot(const std::vector<Series>& series, const ChartOptions& opt = {});
 
 }  // namespace lottiepp::chart
