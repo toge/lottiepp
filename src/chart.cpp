@@ -25,7 +25,7 @@ namespace {
  * @param x2, y2  終点
  * @return        開いた線分の JSON ノード
  */
-json makeLinePath(double x1, double y1, double x2, double y2) {
+json makeLinePath(const double x1, const double y1, const double x2, const double y2) noexcept {
   if (!std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(x2) || !std::isfinite(y2)) {
     ::lottiepp::fail("makeLinePath: coordinates must be finite");
   }
@@ -57,7 +57,7 @@ json makeLinePath(double x1, double y1, double x2, double y2) {
  * @param size    直径（ピクセル）
  * @return        円の JSON ノード
  */
-json makeEllipseShape(double cx, double cy, double size) {
+json makeEllipseShape(const double cx, const double cy, const double size) noexcept {
   if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(size)) {
     ::lottiepp::fail("makeEllipseShape: coordinates/size must be finite");
   }
@@ -72,7 +72,7 @@ json makeEllipseShape(double cx, double cy, double size) {
 /**
  * @brief JSON 文字列をエスケープする
  */
-std::string jsonEscape(std::string_view s) {
+std::string jsonEscape(const std::string_view s) noexcept {
   std::string out;
   out.reserve(s.size() + 2);
   for (char c : s) {
@@ -94,7 +94,7 @@ std::string jsonEscape(std::string_view s) {
  *          グループ内の先行シェイプ（ポリライン）を塗りつぶしてしまう。
  * @return  gr（グループ）の JSON ノード
  */
-json makeDotGroup(double cx, double cy, double size, std::string_view colorHex) {
+json makeDotGroup(const double cx, const double cy, const double size, const std::string_view colorHex) noexcept {
   auto g_result = parseJson("{\"ty\":\"gr\",\"nm\":\"dot\",\"it\":[]}");
   if (!g_result) ::lottiepp::fail(g_result.error().c_str());
   json g = std::move(*g_result);
@@ -118,8 +118,8 @@ json makeDotGroup(double cx, double cy, double size, std::string_view colorHex) 
  * @param name     レイヤ名
  * @return         ty=5 の Layer
  */
-Layer makeTextLayer(std::string_view text, double x, double y, double size,
-                    std::string_view colorHex, double op, const std::string& name) {
+Layer makeTextLayer(const std::string_view text, const double x, const double y, const double size,
+                    const std::string_view colorHex, const double op, const std::string& name) noexcept {
   if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(size) ||
       !std::isfinite(op) || size <= 0.0 || op <= 0.0) {
     ::lottiepp::fail("makeTextLayer: x/y/size/op must be finite and size/op must be positive");
@@ -167,7 +167,7 @@ Layer makeTextLayer(std::string_view text, double x, double y, double size,
  * @return        閉じたパス（c=true）の JSON ノード
  */
 json makeAreaPath(const std::vector<double>& xs, const std::vector<double>& ys,
-                  double y0) {
+                  const double y0) noexcept {
   auto node_result = parseJson(
       "{\"ty\":\"sh\",\"nm\":\"area\",\"ks\":{\"a\":0,\"k\":{\"i\":[],\"o\":[],\"v\":[],\"c\":true}}}");
   if (!node_result) ::lottiepp::fail(node_result.error().c_str());
@@ -195,7 +195,7 @@ json makeAreaPath(const std::vector<double>& xs, const std::vector<double>& ys,
  * @param ys  y 座標配列
  * @return    sh（シェイプ）の JSON ノード、c=false（開パス）
  */
-json makePolyline(const std::vector<double>& xs, const std::vector<double>& ys) {
+json makePolyline(const std::vector<double>& xs, const std::vector<double>& ys) noexcept {
   auto node_result = parseJson("{\"ty\":\"sh\",\"nm\":\"line\",\"ks\":{\"a\":0,\"k\":{}}}");
   if (!node_result) ::lottiepp::fail(node_result.error().c_str());
   json node = std::move(*node_result);
@@ -223,7 +223,7 @@ json makePolyline(const std::vector<double>& xs, const std::vector<double>& ys) 
  * @param   op  アウト点（総フレーム数）
  * @return      tm（トリム）の JSON ノード
  */
-json makeGrowingTrim(double op) {
+json makeGrowingTrim(const double op) noexcept {
   if (!std::isfinite(op) || !(op > 0.0)) {
     ::lottiepp::fail("makeGrowingTrim: op must be finite and positive");
   }
@@ -245,7 +245,7 @@ json makeGrowingTrim(double op) {
 /**
  * @brief ダッシュ配列付きストロークを生成する
  */
-json makeDashStroke(const Series& s) {
+json makeDashStroke(const Series& s) noexcept {
   auto stroke = makeStroke(s.color, 4.0, 100.0);
   if (s.dashArray.size() >= 2) {
     auto arr_result = parseJson("[]");
@@ -276,8 +276,8 @@ json makeDashStroke(const Series& s) {
 /**
  * @brief 棒グラフの矩形グループを生成する
  */
-json makeBarGroup(double barW, double barH, double offX, double offY,
-                   const std::string& color) {
+json makeBarGroup(const double barW, const double barH, const double offX, const double offY,
+                   const std::string& color) noexcept {
   auto group_result = parseJson("{\"ty\":\"gr\",\"nm\":\"bar\",\"it\":[]}");
   if (!group_result) ::lottiepp::fail(group_result.error().c_str());
   json group = std::move(*group_result);
@@ -299,7 +299,7 @@ json makeBarGroup(double barW, double barH, double offX, double offY,
 /**
  * @brief 棒グラフの伸長アニメーション JSON を生成する
  */
-json makeBarScaleAnim(double growDur, double s0x, double s0y, double s1x, double s1y) {
+json makeBarScaleAnim(const double growDur, const double s0x, const double s0y, const double s1x, const double s1y) noexcept {
   auto result = parseJson(
       "{\"a\":1,\"k\":["
       "{\"i\":{\"x\":[0.4,0.4],\"y\":[1,1]},\"o\":{\"x\":[0.6,0.6],\"y\":[0,0]},\"t\":0,\"s\":[" +
@@ -317,7 +317,7 @@ json makeBarScaleAnim(double growDur, double s0x, double s0y, double s1x, double
  * @param op   アウト点（総フレーム数）
  * @return     ty=4（シェイプレイヤ）の Layer
  */
-Layer makeBackground(const ChartOptions& opt, double op) {
+Layer makeBackground(const ChartOptions& opt, const double op) noexcept {
   ShapeLayerParams p;
   p.name = "background";
   p.x = opt.width / 2.0;
@@ -337,8 +337,8 @@ Layer makeBackground(const ChartOptions& opt, double op) {
  * @param op           アウト点（総フレーム数）
  * @return             縦軸・横軸それぞれ 1 件ずつの Layer
  */
-std::vector<Layer> makeAxes(const ChartOptions& opt, double x0, double y0,
-                            double spanX, double spanY, double op) {
+std::vector<Layer> makeAxes(const ChartOptions& opt, const double x0, const double y0,
+                            const double spanX, const double spanY, const double op) noexcept {
   std::vector<Layer> layers;
   const double tick = 6.0;
 
@@ -385,8 +385,8 @@ std::vector<Layer> makeAxes(const ChartOptions& opt, double x0, double y0,
  * @param op           アウト点（総フレーム数）
  * @return             横グリッド・縦グリッドの 2 レイヤ
  */
-std::vector<Layer> makeGrid(const ChartOptions& opt, double x0, double y0,
-                            double spanX, double spanY, double op) {
+std::vector<Layer> makeGrid(const ChartOptions& opt, const double x0, const double y0,
+                            const double spanX, const double spanY, const double op) noexcept {
   std::vector<Layer> layers;
   const std::string col = opt.gridColor.empty() ? opt.axisColor : opt.gridColor;
 

@@ -228,7 +228,7 @@ json staticProp(double v) noexcept;
  * @param arr JSON 配列リテラル文字列（例: "[100,100]"）
  * @return {"a":0,"k":<arr>} の形の json ノード
  */
-json staticProp(std::string_view arr);
+json staticProp(std::string_view arr) noexcept;
 
 /**
  * @brief 長方形シェイプ（ty="rc"）を生成する
@@ -237,7 +237,7 @@ json staticProp(std::string_view arr);
  * @param round 角丸め半径（デフォルト 0）
  * @return シェイプアイテムを表す json ノード
  */
-json makeRect(double w, double h, double round = 0.0);
+json makeRect(const double w, const double h, const double round = 0.0) noexcept;
 
 /**
  * @brief 楕円シェイプ（ty="el"）を生成する
@@ -245,7 +245,7 @@ json makeRect(double w, double h, double round = 0.0);
  * @param h 高さ（レイヤ原点を中心とする）
  * @return シェイプアイテムを表す json ノード
  */
-json makeEllipse(double w, double h);
+json makeEllipse(const double w, const double h) noexcept;
 
 /**
  * @brief 単色塗りつぶし（ty="fl"）を生成する
@@ -253,7 +253,7 @@ json makeEllipse(double w, double h);
  * @param opacity 不透明度（0～100）
  * @return シェイプアイテムを表す json ノード
  */
-json makeFill(std::string_view hex, double opacity = 100.0);
+json makeFill(std::string_view hex, const double opacity = 100.0) noexcept;
 
 /**
  * @brief 単色ストローク（ty="st"）を生成する
@@ -262,7 +262,7 @@ json makeFill(std::string_view hex, double opacity = 100.0);
  * @param opacity 不透明度（0～100）
  * @return シェイプアイテムを表す json ノード
  */
-json makeStroke(std::string_view hex, double width, double opacity = 100.0);
+json makeStroke(std::string_view hex, const double width, const double opacity = 100.0) noexcept;
 
 /**
  * @brief トリムパス修飾（ty="tm"）を生成する
@@ -272,7 +272,7 @@ json makeStroke(std::string_view hex, double width, double opacity = 100.0);
  * @param simultaneous true=全パスを同時にトリム, false=各パスを個別にトリム
  * @return シェイプ修飾アイテムを表す json ノード
  */
-json makeTrimPath(double startPct, double endPct, double offsetDeg = 0.0, bool simultaneous = true);
+json makeTrimPath(const double startPct, const double endPct, const double offsetDeg = 0.0, const bool simultaneous = true) noexcept;
 
 /**
  * @brief シェイプレイヤ生成時のパラメータ
@@ -292,7 +292,7 @@ struct ShapeLayerParams {
  * @param p レイヤパラメータ（items にシェイプと塗り/線を含める）
  * @return 生成された Layer（ind は未設定。addLayer で付与される）
  */
-Layer makeShapeLayer(const ShapeLayerParams& p);
+Layer makeShapeLayer(const ShapeLayerParams& p) noexcept;
 
 /**
  * @brief Document のトップレベルへレイヤを追加する
@@ -322,7 +322,7 @@ struct DocumentParams {
  * @param p ドキュメントパラメータ（既定値では 512x512 / 60fps / 60 フレーム）
  * @return 生成された空の Document
  */
-Document makeDocument(const DocumentParams& p = {});
+Document makeDocument(const DocumentParams& p = {}) noexcept;
 
 /**
  * @brief 名前でレイヤを検索する（トップレベルおよびアセット内）
@@ -346,7 +346,7 @@ bool removeLayer(Document& doc, std::string_view name);
  * @param repeatEdge エッジピクセルを繰り返すか（デフォルト true）
  * @return レイヤエフェクト（ef）に追加可能な json ノード
  */
-json makeGaussianBlur(double stddev, bool repeatEdge = true);
+json makeGaussianBlur(const double stddev, const bool repeatEdge = true) noexcept;
 
 /**
  * @brief レイヤへエフェクトを追加する
@@ -361,7 +361,7 @@ void addEffect(Layer& layer, const json& effect);
  * @param hex "#rgb" / "#rrggbb" / "#rrggbbaa" 形式の文字列（大文字小文字は区別しない）。先頭の '#' は省略可。
  * @return 解析に成功した場合は Rgb を保持する optional、失敗した場合は nullopt を返す。
  */
-std::optional<Rgb> parseHexColor(std::string_view hex);
+std::optional<Rgb> parseHexColor(std::string_view hex) noexcept;
 
 /**
  * @brief Lottie ドキュメントを読み込む（.json または .lottie）
@@ -539,7 +539,7 @@ inline std::string extensionOf(const std::string& path) {
   return toLower(path.substr(pos));
 }
 
-inline int hexDigit(char c) {
+inline int hexDigit(const char c) noexcept {
   if (c >= '0' && c <= '9') {
     return c - '0';
   }
@@ -552,11 +552,11 @@ inline int hexDigit(char c) {
   return -1;
 }
 
-inline bool colorsNearlyEqual(const Rgb& a, const Rgb& b, float eps = 1.0f / 255.0f) {
+inline bool colorsNearlyEqual(const Rgb& a, const Rgb& b, const float eps = 1.0f / 255.0f) noexcept {
   return std::fabs(a.r - b.r) <= eps && std::fabs(a.g - b.g) <= eps && std::fabs(a.b - b.b) <= eps;
 }
 
-inline bool isColorArray(const json& arr) {
+inline bool isColorArray(const json& arr) noexcept {
   if (!arr.is_array() || arr.size() < 3 || arr.size() > 4) {
     return false;
   }
@@ -568,7 +568,7 @@ inline bool isColorArray(const json& arr) {
   return true;
 }
 
-inline Rgb colorFromArray(const json& arr) {
+inline Rgb colorFromArray(const json& arr) noexcept {
   Rgb c;
   c.r = arr[0].as<float>();
   c.g = arr[1].as<float>();
@@ -579,7 +579,7 @@ inline Rgb colorFromArray(const json& arr) {
   return c;
 }
 
-inline json colorToArray(const Rgb& c, std::size_t n) {
+inline json colorToArray(const Rgb& c, const std::size_t n) noexcept {
   json arr = json::array_t{c.r, c.g, c.b};
   if (n >= 4) {
     arr.get_array().push_back(c.a);
@@ -587,7 +587,7 @@ inline json colorToArray(const Rgb& c, std::size_t n) {
   return arr;
 }
 
-inline bool looksLikeColorProp(const json& node) {
+inline bool looksLikeColorProp(const json& node) noexcept {
   if (!node.is_object() || !node.contains("k")) {
     return false;
   }
@@ -728,21 +728,21 @@ inline std::size_t recolorLayer(Layer& layer, const std::optional<Rgb>& from, co
   return count;
 }
 
-inline void scaleTimingValue(json& v, double factor, std::size_t& count) {
+inline void scaleTimingValue(json& v, const double factor, std::size_t& count) noexcept {
   if (v.is_number()) {
     v = v.as<double>() * factor;
     ++count;
   }
 }
 
-inline void scaleOptional(std::optional<double>& v, double factor, std::size_t& count) {
+inline void scaleOptional(std::optional<double>& v, const double factor, std::size_t& count) noexcept {
   if (v) {
     *v *= factor;
     ++count;
   }
 }
 
-inline bool looksLikeKeyframe(const json& node) {
+inline bool looksLikeKeyframe(const json& node) noexcept {
   return node.is_object() && node.contains("t") && node["t"].is_number() &&
          (node.contains("s") || node.contains("e") || node.contains("i") || node.contains("o"));
 }
@@ -947,7 +947,7 @@ inline json staticProp(double v) noexcept {
   return std::move(*result);
 }
 
-inline json staticProp(std::string_view arr) {
+inline json staticProp(std::string_view arr) noexcept {
   auto result = parseJson("{\"a\":0,\"k\":" + std::string(arr) + "}");
   if (!result) {
     ::lottiepp::fail(result.error());
@@ -955,7 +955,7 @@ inline json staticProp(std::string_view arr) {
   return std::move(*result);
 }
 
-inline json makeShapeTransform() {
+inline json makeShapeTransform() noexcept {
   static const json kTransform = [] {
     auto r = parseJson(
         "{\"ty\":\"tr\","
@@ -969,7 +969,7 @@ inline json makeShapeTransform() {
   return kTransform;
 }
 
-inline json makeTrimPath(double startPct, double endPct, double offsetDeg, bool simultaneous) {
+inline json makeTrimPath(const double startPct, const double endPct, const double offsetDeg, const bool simultaneous) noexcept {
   if (!std::isfinite(startPct) || !std::isfinite(endPct) || !std::isfinite(offsetDeg)) {
     ::lottiepp::fail("makeTrimPath: parameters must be finite");
   }
@@ -986,7 +986,7 @@ inline json makeTrimPath(double startPct, double endPct, double offsetDeg, bool 
   return std::move(*result);
 }
 
-inline json makeRect(double w, double h, double round) {
+inline json makeRect(const double w, const double h, const double round) noexcept {
   if (!std::isfinite(w) || !std::isfinite(h) || !std::isfinite(round)) {
     ::lottiepp::fail("makeRect: w/h/round must be finite");
   }
@@ -1002,7 +1002,7 @@ inline json makeRect(double w, double h, double round) {
   return n;
 }
 
-inline json makeEllipse(double w, double h) {
+inline json makeEllipse(const double w, const double h) noexcept {
   if (!std::isfinite(w) || !std::isfinite(h)) {
     ::lottiepp::fail("makeEllipse: w/h must be finite");
   }
@@ -1017,7 +1017,7 @@ inline json makeEllipse(double w, double h) {
   return n;
 }
 
-inline json makeFill(std::string_view hex, double opacity) {
+inline json makeFill(const std::string_view hex, const double opacity) noexcept {
   if (!std::isfinite(opacity)) {
     ::lottiepp::fail("makeFill: opacity must be finite");
   }
@@ -1039,7 +1039,7 @@ inline json makeFill(std::string_view hex, double opacity) {
   return n;
 }
 
-inline json makeStroke(std::string_view hex, double width, double opacity) {
+inline json makeStroke(const std::string_view hex, const double width, const double opacity) noexcept {
   if (!std::isfinite(width) || !std::isfinite(opacity)) {
     ::lottiepp::fail("makeStroke: width/opacity must be finite");
   }
@@ -1062,7 +1062,7 @@ inline json makeStroke(std::string_view hex, double width, double opacity) {
   return n;
 }
 
-inline Layer makeShapeLayer(const ShapeLayerParams& p) {
+inline Layer makeShapeLayer(const ShapeLayerParams& p) noexcept {
   Layer l;
   l.ty = 4;
   l.nm = p.name;
@@ -1115,7 +1115,7 @@ inline void addLayer(Document& doc, Layer layer) {
   doc.layers.push_back(std::move(layer));
 }
 
-inline Document makeDocument(const DocumentParams& p) {
+inline Document makeDocument(const DocumentParams& p) noexcept {
   Document doc;
   doc.v  = p.version;
   doc.fr = p.fr;
@@ -1150,7 +1150,7 @@ inline Layer* findLayer(Document& doc, std::string_view name) {
   return nullptr;
 }
 
-inline json makeGaussianBlur(double stddev, bool repeatEdge) {
+inline json makeGaussianBlur(const double stddev, const bool repeatEdge) noexcept {
   auto result = parseJson(
       "{\"ty\":0,\"nm\":\"Gaussian Blur\",\"np\":3,\"mn\":\"ADBE Gaussian Blur\","
       "\"ix\":1,\"en\":1,\"ef\":["
@@ -1182,7 +1182,7 @@ inline void addEffect(Layer& layer, const json& effect) {
   layer.extra["ef"] = arr;
 }
 
-inline std::optional<Rgb> parseHexColor(std::string_view hex) {
+inline std::optional<Rgb> parseHexColor(std::string_view hex) noexcept {
   if (hex.empty()) {
     return std::nullopt;
   }
